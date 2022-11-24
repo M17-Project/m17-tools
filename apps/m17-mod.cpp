@@ -58,12 +58,19 @@ const auto evm_a = std::array<double, 3>{1.0, -1.56101808, 0.64135154};
 
 const char VERSION[] = "2.2";
 
+std::string ptt_on = "";
+std::string ptt_off = "";
+bool has_ptt = false;
+
 struct Config
 {
     std::string source_address;
     std::string destination_address;
     std::string audio_device;
     std::string event_device;
+	std::string tx_on_cmd;
+	std::string tx_off_cmd;
+	bool action_ptt = false;
     uint16_t key;
     bool verbose = false;
     bool debug = false;
@@ -97,6 +104,10 @@ struct Config
                 "transmitter identifier (your callsign).")
             ("dest,D", po::value<std::string>(&result.destination_address),
                 "destination (default is broadcast).")
+			("transmit-on,T", po::value<std::string>(&result.tx_on_cmd)->default_value(""),
+                "Transmit/PTT activate action/command eg: toggle gpio on (default is no action).")
+			("transmit-off,S", po::value<std::string>(&result.tx_off_cmd)->default_value(""),
+                "Transmit/PTT deactivate action/command eg: toggle gpio off (default is no action).")
             ("can,C", po::value<int>(&result.can)->default_value(10),
                 "channel access number.")
             ("audio,a", po::value<std::string>(&result.audio_device),
@@ -170,6 +181,12 @@ struct Config
         {
             std::cerr << "Only one of sym, bin or rrc may be chosen." << std::endl;
             return std::nullopt;
+        }
+		
+		if (result.tx_on_cmd.size() > 0 && result.tx_off_cmd.size() > 0)
+        {
+			result.action_ptt = true;
+            std::cerr << "PTT action provided." << std::endl;
         }
 		
 		switch(result.CKEY.length()/2){
@@ -781,6 +798,11 @@ void transmit(queue_t& queue, const lsf_t& lsf)
     send_audio_frame(lich[lich_segment], data);
     output_eot();
 	
+	if(has_ptt){
+        std::cerr << "\r\nPTT: OFF \n";	
+		system(ptt_off.c_str());
+	}
+	
     codec2_destroy(codec2);
 }
 
@@ -825,10 +847,19 @@ int main(int argc, char* argv[])
     can = config->can;
 	enc_key = config->encrypt;
 	
+	has_ptt = config->action_ptt;
+	ptt_on = config->tx_on_cmd;
+	ptt_off = config->tx_off_cmd;
+	
 	std::string hash = boost::algorithm::unhex(config->CKEY);
 	std::copy(hash.begin(), hash.end(), Key);
 	
     signal(SIGINT, &signal_handler);
+	
+	if(has_ptt){
+        std::cerr << "\r\nPTT: ON \n";			
+		system(ptt_on.c_str());
+	}
 
     send_preamble();
 

@@ -54,10 +54,17 @@ const auto evm_a = std::array<double, 3>{1.0, -1.56101808, 0.64135154};
 
 const char VERSION[] = "1.0";
 
+std::string ptt_on = "";
+std::string ptt_off = "";
+bool has_ptt = false;
+
 struct Config
 {
     std::string audio_device;
     std::string event_device;
+	std::string tx_on_cmd;
+	std::string tx_off_cmd;
+	bool action_ptt = false;
     uint16_t key;
     bool verbose = false;
     bool debug = false;
@@ -86,7 +93,10 @@ struct Config
                 "Gateway repeater address (default is 127.0.0.1).")
             ("port,P", po::value<unsigned short>(&result.port)->default_value(17011),
                 "Gateway repeater port (default is 17011).")
-
+			("transmit-on,T", po::value<std::string>(&result.tx_on_cmd)->default_value(""),
+                "Transmit/PTT activate action/command eg: toggle gpio on (default is no action).")
+			("transmit-off,S", po::value<std::string>(&result.tx_off_cmd)->default_value(""),
+                "Transmit/PTT deactivate action/command eg: toggle gpio off (default is no action).")
             ("can,C", po::value<int>(&result.can)->default_value(10),
                 "channel access number.")
             ("audio,a", po::value<std::string>(&result.audio_device),
@@ -110,7 +120,7 @@ struct Config
 
         if (vm.count("help"))
         {
-            std::cout << "Read IP packets from M17-Gateway and write baseband M17 to STDOUT\n"
+            std::cout << "Read IP packets from M17-Gateway and write M17 baseband to STDOUT\n"
                 << desc << std::endl;
 
             return std::nullopt;
@@ -141,6 +151,12 @@ struct Config
         {
             std::cerr << "Repeater IP Address too long." << std::endl;
             return std::nullopt;
+        }
+		
+		if (result.tx_on_cmd.size() > 0 && result.tx_off_cmd.size() > 0)
+        {
+			result.action_ptt = true;
+            std::cerr << "PTT action provided." << std::endl;
         }
 
         if (result.can < 0 || result.can > 15) {
@@ -615,9 +631,6 @@ void M17RTXLink::run(){
     std::thread thd(&M17RTXLink::transmit,this);
 	
 	std::cerr << "M17RTXLink running. ctrl-D to break." << std::endl;
-	
-	std::string ptt_on = "curl -s -d \"ron=1\" http://192.168.1.2/status.xml > /dev/null";
-	std::string ptt_off = "curl -s -d \"rof=1\" http://192.168.1.2/status.xml > /dev/null";
 
     // Start LICH Construction
     lich_segment = 0;
@@ -652,13 +665,11 @@ void M17RTXLink::run(){
                 std::copy(command.begin()+36,command.begin()+36+16,packet.Payload.begin()); // CODEC2 PAYLOAD
 				
                 if((packet.FN & 0x8000)){
-                    if(mdebug){
-                        std::cerr << "[DEBUG] PTT: OFF \n";
-                    }
-    #ifndef WIN32				
-                    system(ptt_off.c_str());
-    #endif
-                    pttOn = false;
+					if(has_ptt){
+                        std::cerr << "\r\nPTT: OFF \n";	
+						system(ptt_off.c_str());
+						pttOn = false;
+					}
                 }
 
                 if(packet.FN == 0x00){
@@ -683,13 +694,13 @@ void M17RTXLink::run(){
                 
                     if(mdebug){
                         std::cerr << "[DEBUG] FN: " << packet.FN << " SRC: " << std::string(src.begin(), src.end()) << " DST: " << std::string(dst.begin(), dst.end()) << "\n";
-                        std::cerr << "[DEBUG] PTT: ON \n";
                     }
-                        
-    #ifndef WIN32				
-                    system(ptt_on.c_str());
-    #endif
-                    pttOn = true;
+					
+					if(has_ptt){
+                        std::cerr << "\r\nPTT: ON \n";			
+						system(ptt_on.c_str());
+						pttOn = true;
+					}
                     
                     send_preamble();
                     lsf = send_lsf(std::string(src.begin(), src.end()),std::string(dst.begin(), dst.end()));
@@ -709,16 +720,12 @@ void M17RTXLink::run(){
                 if (!qPayload.put(payload, std::chrono::seconds(300))){ std::cerr << "QUEUE FULL BREAK\n"; break;} 
             }
         }else{
-            if(pttOn){
+            if(pttOn && has_ptt){
                 now = std::chrono::steady_clock::now();
                 auto time = std::chrono::duration_cast<std::chrono::milliseconds>(now - begin).count();
                 if(time>1000){
-                    if(mdebug){
-                        std::cerr << "[DEBUG] [timeout] PTT: OFF \n";
-                    }
-#ifndef WIN32				
+                    std::cerr << "\r\n[timeout] PTT: OFF \n";			
                     system(ptt_off.c_str());
-#endif
                     pttOn = false;
                     begin = std::chrono::steady_clock::now();
                     std::cerr << "Elapsed(ms)=" << time << std::endl;
@@ -814,6 +821,10 @@ int main(int argc, char* argv[])
 
     std::string addr = config->addr;
     unsigned short port = config->port;
+	
+	has_ptt = config->action_ptt;
+	ptt_on = config->tx_on_cmd;
+	ptt_off = config->tx_off_cmd;
 
     int res;
     M17RTXLink glink(std::string("127.0.0.1"),(unsigned short)17011);
