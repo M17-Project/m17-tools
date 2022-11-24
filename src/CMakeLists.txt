@@ -1,3 +1,5 @@
+include_directories("${PROJECT_SOURCE_DIR}/include/external")
+
 add_library(m17cxx INTERFACE)
 
 add_subdirectory(tiny-AES-c)
