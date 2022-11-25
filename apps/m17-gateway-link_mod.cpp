@@ -95,7 +95,7 @@ struct Config
                 "Gateway repeater port (default is 17011).")
 			("transmit-on,T", po::value<std::string>(&result.tx_on_cmd)->default_value(""),
                 "Transmit/PTT activate action/command eg: toggle gpio on (default is no action).")
-			("transmit-off,S", po::value<std::string>(&result.tx_off_cmd)->default_value(""),
+			("transmit-off,O", po::value<std::string>(&result.tx_off_cmd)->default_value(""),
                 "Transmit/PTT deactivate action/command eg: toggle gpio off (default is no action).")
             ("can,C", po::value<int>(&result.can)->default_value(10),
                 "channel access number.")
