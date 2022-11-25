@@ -77,9 +77,8 @@ To output a bitstream file:
     sox brain.wav -t raw - | ./m17-mod -S AB1CD -b > m17.bin
 
 This bitstream file can be fed into [m17-gnuradio](https://github.com/mobilinkd/m17-gnuradio) to
-transmit M17 using a PlutoSDR (or any SDR with an appropriate GNURadio sink), or loaded into
-a vector signal generator such as an ESG-D Series signal generator. See the specification document
-for more details on [file formats](https://spec.m17project.org/appendix/file-formats).
+transmit M17 using a PlutoSDR, HackRF, or any SDR with an appropriate GNURadio sink. See the
+specification document for more details on [file formats](https://spec.m17project.org/appendix/file-formats).
 
 ### Command line options
 
