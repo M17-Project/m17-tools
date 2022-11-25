@@ -1,5 +1,5 @@
 # m17-tools
-A set of M17 tools.
+A set of M17 tools based on [original m17-cxx-demod toolset](https://github.com/mobilinkd/m17-cxx-demod) by Rob Riggs, Wx9O.
 
 ## m17-demod
 This program reads a 48k samples per second 16-bit, little-endian, single
