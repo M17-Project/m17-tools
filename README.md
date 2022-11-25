@@ -60,7 +60,7 @@ It also requires a modern C++17 compiler (GCC 8 minimum).
 
 This program was designed to be used with RTL-SDR, specifically rtl-fm.
 
-    rtl_fm -E offset -f 144.91M -s 48k | m17-demod -l | play -b 16 -r 8000 -c1 -t s16 -
+    rtl_fm -E offset -f 439.5M -s 48k | m17-demod -l | play -b 16 -r 8000 -c1 -t s16 -
 
 You should run this in a terminal window that is at least 132 characters wide. It
 will output diagnostic information on a single line in the window.
@@ -86,7 +86,9 @@ specification document for more details on [file formats](https://spec.m17projec
 
 #### m17-mod
 
-    -S for source callsign (alphanumeric string)
+    -S for the source callsign (alphanumeric string),
+    -D for the destination callsign (alphanumeric string),
+    -C for the Channel Access Number (0..15, default - 10),
     -x for binary output (M17 baseband as a packed bitstream),
     -r for raw audio output (single channel, signed 16-bit little endian, +7168 for the `+1` symbol),
     -s for symbols output,
