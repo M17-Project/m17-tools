@@ -106,7 +106,7 @@ specification document for more details on [file formats](https://spec.m17projec
     -s for symbols output (signed 8-bit, 4.8k per second),
     -K for AES key, automatic mute if encrypted transmission and no key provided.
 
-The demodulator produces diagnost output which looks like:
+The demodulator produces diagnostic output which looks like:
 
     SRC: BROADCAST, DEST: AB3CD, TYPE: 0002, NONCE: 0000000000000000000000000000, CRC: bb9b
     dcd: 1, evm:    13.27%, deviation:   0.9857, freq offset:  0.03534, locked:   true, clock:        1, sample: 0, 0, 0, cost: 9
