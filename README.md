@@ -1,5 +1,5 @@
 # m17-tools
-A set of M17 tools based on [original m17-cxx-demod toolset](https://github.com/mobilinkd/m17-cxx-demod) by Rob Riggs, Wx9O.
+A set of M17 tools based on [original m17-cxx-demod toolset](https://github.com/mobilinkd/m17-cxx-demod) by Rob Riggs, WX9O.
 
 ## m17-demod
 This program reads a 48k samples per second 16-bit, little-endian, single
@@ -91,7 +91,7 @@ specification document for more details on [file formats](https://spec.m17projec
     -r for raw audio output (single channel, signed 16-bit little endian, +7168 for the `+1` symbol),
     -s for symbols output,
     -d to dump additional debug info,
-    -K for AES key setting (hex format without the leading `0x`),
+    -K for AES key setting (hex format without the leading `0x`) - automatically checks keylength,
     -T for PTT on command,
     -O for PTT off command,
     
