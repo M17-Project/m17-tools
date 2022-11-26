@@ -50,6 +50,10 @@ jobs:
   windows-build:
     name: Windows CI
     runs-on: "windows-latest"
+    cc: "cl",
+    cxx: "cl",
+    environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars64.bat",
+    generators: "Visual Studio 16 2019"
     steps:
       - uses: conda-incubator/setup-miniconda@v2
         with:
