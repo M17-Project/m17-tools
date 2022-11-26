@@ -57,16 +57,16 @@ jobs:
           auto-activate-base: true
           activate-environment: ""
           channels: conda-forge
-      - name: Setup Conda Env
-        run: |
-          conda info && conda list
-          conda create -n M17 vs2019_win-64 cmake ninja pkg-config boost-cpp gtest gmock gtest libcodec2
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Setup Conda
+        run: conda info
       - name: Install MSVC on Windows
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
+      - name: Create Conda Env
+        run: conda create -n M17 vs2019_win-64 cmake ninja pkg-config boost-cpp gtest gmock gtest libcodec2
+      - name: Checkout code
+        uses: actions/checkout@v3
       - name: Configure
         run: |
           mkdir build
@@ -79,15 +79,10 @@ jobs:
       - name: Zip Artifacts
         uses: vimtor/action-zip@v1
         with:
-          working-directory: build
-          files: m17-mod.exe m17-demod.exe m17-gateway-link_mod.exe m17-gateway_link_demod.exe
+          files: build/m17-mod.exe build/m17-demod.exe build/m17-gateway-link_mod.exe build/m17-gateway_link_demod.exe
           dest: M17-Tools-Win-x64.zip
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
-          working-directory: build
           name: M17-Tools-Win-x64
-          path: M17-Tools-Win-x64.zip
-      - name: Test
-        working-directory: build
-        run: ctest --build-config Release --output-on-failure --timeout 120 -j3
+          path: build/M17-Tools-Win-x64.zip
