@@ -49,11 +49,7 @@ jobs:
         run: make install
   windows-build:
     name: Windows CI
-    runs-on: "windows-latest"
-    cc: "cl"
-    cxx: "cl"
-    environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars64.bat"
-    generators: "Visual Studio 16 2019"
+    runs-on: "windows-2019"
     steps:
       - uses: conda-incubator/setup-miniconda@v2
         with:
@@ -63,9 +59,14 @@ jobs:
           channels: conda-forge
       - name: Setup Conda Env
         run: |
+          conda info && conda list
           conda create -n M17 vs2019_win-64 cmake ninja pkg-config boost-cpp gtest gmock gtest libcodec2
       - name: Checkout code
         uses: actions/checkout@v3
+      - name: Install MSVC on Windows
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
       - name: Configure
         run: |
           mkdir build
