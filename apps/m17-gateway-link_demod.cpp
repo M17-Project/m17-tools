@@ -241,11 +241,9 @@ bool decode_packet(mobilinkd::M17FrameDecoder::packet_buffer_t const& packet_seg
     if (packet_segment[25] & 0x80) // last frame of packet.
     {
         size_t packet_size = (packet_segment[25] & 0x7F) >> 2;
-#ifdef WIN32
-        packet_size = min(packet_size, size_t(25));
-#else
-        packet_size = std::min(packet_size, size_t(25));
-#endif
+        
+        packet_size = std::min<size_t>(packet_size, size_t(25));
+        
         for (size_t i = 0; i != packet_size; ++i)
         {
             current_packet.push_back(packet_segment[i]);
@@ -294,11 +292,9 @@ bool decode_full_packet(mobilinkd::M17FrameDecoder::packet_buffer_t const& packe
     if (packet_segment[25] & 0x80) // last packet;
     {
         size_t packet_size = (packet_segment[25] & 0x7F) >> 2;
-#ifdef WIN32
-        packet_size = min(packet_size, size_t(25));
-#else
-        packet_size = std::min(packet_size, size_t(25));
-#endif
+        
+        packet_size = std::min<size_t>(packet_size, size_t(25));
+        
         for (size_t i = 0; i != packet_size; ++i)
         {
             current_packet.push_back(packet_segment[i]);
