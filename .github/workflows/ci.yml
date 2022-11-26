@@ -59,15 +59,14 @@ jobs:
           channels: conda-forge
       - name: Setup Conda Env
         run: |
-          conda info && conda list
           conda create -n M17 vs2019_win-64 cmake ninja pkg-config boost-cpp gtest gmock gtest libcodec2
-          conda activate M17
       - name: Checkout code
         uses: actions/checkout@v3
       - name: Configure
         run: |
           mkdir build
           cd build
+          conda activate M17
           cmake -G "Ninja" -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_INSTALL_PREFIX:PATH="%LIBRARY_PREFIX%" -DCMAKE_PREFIX_PATH:PATH="%LIBRARY_PREFIX%" ..
       - name: Compile
         working-directory: build
