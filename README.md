@@ -32,7 +32,13 @@ This code requires the codec2-devel, boost-devel and gtest-devel packages be ins
 It also requires a modern C++17 compiler (GCC 8 minimum).
 
 ### Build steps
-
+	cd thirdparty/rtaudio
+	mkdir build
+	cd build
+	cmake ..
+	make
+	cd ../../../
+	
     mkdir build
     cd build
     cmake ..
