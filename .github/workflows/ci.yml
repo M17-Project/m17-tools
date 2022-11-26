@@ -52,13 +52,13 @@ jobs:
     name: Windows CI Release
     runs-on: windows-latest
     steps:
-      - name: Setup Conda
       - uses: conda-incubator/setup-miniconda@v2
         with:
           miniconda-version: "latest"
           auto-activate-base: true
           activate-environment: ""
           channels: conda-forge
+      - name: Setup Conda
         run: |
           conda create -n M17 vs2019_win-64 cmake ninja pkg-config boost-cpp gtest gmock gtest libcodec2
           conda activate M17
