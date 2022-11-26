@@ -76,13 +76,16 @@ jobs:
       - name: Compile
         working-directory: build
         run: cmake --build . --config Release --
+      - name: Install
+        working-directory: build
+        run: cmake --build . --config Release --target install
       - name: Zip Artifacts
         uses: vimtor/action-zip@v1
         with:
-          files: build/m17-mod.exe build/m17-demod.exe build/m17-gateway-link_mod.exe build/m17-gateway_link_demod.exe
-          dest: M17-Tools-Win-x64.zip
+          files: bin m17-cxx/bin m17-tools/bin m17-tools/build/apps
+          dest: bin/M17-Tools-Win-x64.zip
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
           name: M17-Tools-Win-x64
-          path: build/M17-Tools-Win-x64.zip
+          path: bin/M17-Tools-Win-x64.zip
