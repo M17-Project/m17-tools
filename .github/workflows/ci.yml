@@ -77,15 +77,15 @@ jobs:
         working-directory: build
         run: cmake --build . --config Release --
       - name: Zip Artifacts
-        working-directory: build
         uses: vimtor/action-zip@v1
         with:
+          working-directory: build
           files: m17-mod.exe m17-demod.exe m17-gateway-link_mod.exe m17-gateway_link_demod.exe
           dest: M17-Tools-Win-x64.zip
       - name: Upload Artifact
-        working-directory: build
         uses: actions/upload-artifact@v3
         with:
+          working-directory: build
           name: M17-Tools-Win-x64
           path: M17-Tools-Win-x64.zip
       - name: Test
