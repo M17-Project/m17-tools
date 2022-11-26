@@ -18,9 +18,9 @@ ENDIF()
 
 add_executable(m17-mod-gui m17-mod-gui.cpp ${IMGUI_SRCS})
 IF (WIN32)
-target_link_libraries(m17-mod-gui PRIVATE m17cxx codec2 Boost::program_options Threads::Threads tiny-AES-c ${IMGUI_LIBS} ${PROJECT_SOURCE_DIR}/thirdparty/rtaudio/build/rtaudio.lib)
-ELSE
-target_link_libraries(m17-mod-gui PRIVATE m17cxx codec2 Boost::program_options Threads::Threads tiny-AES-c ${IMGUI_LIBS} ${PROJECT_SOURCE_DIR}/thirdparty/rtaudio/build/rtaudio.a)
+	target_link_libraries(m17-mod-gui PRIVATE m17cxx codec2 Boost::program_options Threads::Threads tiny-AES-c ${IMGUI_LIBS} ${PROJECT_SOURCE_DIR}/thirdparty/rtaudio/build/rtaudio.lib)
+ELSE()
+	target_link_libraries(m17-mod-gui PRIVATE m17cxx codec2 Boost::program_options Threads::Threads tiny-AES-c ${IMGUI_LIBS} ${PROJECT_SOURCE_DIR}/thirdparty/rtaudio/build/rtaudio.a)
 ENDIF()
 include_directories(${IMGUI_INCLUDE_DIR} ${PROJECT_SOURCE_DIR}/thirdparty/rtaudio)
 
