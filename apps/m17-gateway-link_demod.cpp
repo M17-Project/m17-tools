@@ -186,9 +186,9 @@ bool dump_lsf(std::array<T, N> const& lsf)
     current_packet.clear();
     packet_frame_counter = 0;
 
-    if (!lsf[111]) // LSF type bit 0
+    if (!(lsf[13] & 1)) // LSF type bit 0
     {
-        uint8_t packet_type = (lsf[109] << 1) | lsf[110];
+        uint8_t packet_type = (lsf[13] & 6) >> 1;
 
         switch (packet_type)
         {
@@ -459,9 +459,7 @@ void diagnostic_callback(bool dcd, FloatType evm, FloatType deviation, FloatType
         }
     
         auto ber = double(prbs.errors()) / double(prbs.bits());
-        char buffer[40];
-        snprintf(buffer, 40, "BER: %-1.6lf (%lu bits)", ber, prbs.bits());
-        std::cerr << buffer;
+        std::cerr << "BER: " << std::fixed << std::setprecision(6) << ber << " (" << prbs.bits() << ")";
     }
     std::cerr << std::flush;
 }
