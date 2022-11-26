@@ -294,7 +294,7 @@ bool decode_full_packet(mobilinkd::M17FrameDecoder::packet_buffer_t const& packe
     if (packet_segment[25] & 0x80) // last packet;
     {
         size_t packet_size = (packet_segment[25] & 0x7F) >> 2;
-#ifdef WIN32:
+#ifdef WIN32
         packet_size = min(packet_size, size_t(25));
 #else
         packet_size = std::min(packet_size, size_t(25));
