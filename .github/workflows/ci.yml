@@ -47,8 +47,8 @@ jobs:
       - name: Install
         working-directory: build
         run: make install
-  example-2-win:
-    name: Ex2 Windows
+  windows-build:
+    name: Windows CI
     runs-on: "windows-latest"
     steps:
       - uses: conda-incubator/setup-miniconda@v2
@@ -76,13 +76,12 @@ jobs:
         working-directory: build
         run: ctest --build-config Release --output-on-failure --timeout 120
       - name: Zip Artifacts
-        working-directory: build
         uses: vimtor/action-zip@v1
         with:
-          files: m17-mod.exe m17-demod.exe m17-gateway-link_mod.exe m17-gateway_link_demod.exe
-          dest: M17-Tools-Win-x64.zip
+          files: build/m17-mod.exe build/m17-demod.exe build/m17-gateway-link_mod.exe build/m17-gateway_link_demod.exe
+          dest: build/M17-Tools-Win-x64.zip
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
-          name: Release-Win64
+          name: M17-Tools-Win-x64
           path: build/M17-Tools-Win-x64.zip
