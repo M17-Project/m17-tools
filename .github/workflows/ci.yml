@@ -54,23 +54,35 @@ jobs:
       - uses: conda-incubator/setup-miniconda@v2
         with:
           miniconda-version: "latest"
-          activate-environment: foo
-      - name: Bash
-        shell: bash -el {0}
+          auto-activate-base: true
+          activate-environment: ""
+          channels: conda-forge
+      - name: Setup Conda Env
         run: |
-          conda info
-          conda list
-      - name: PowerShell
-        shell: powershell
-        run: |
-          conda info
-          conda list
-      - name: PowerShell Core
-        shell: pwsh
-        run: |
-          conda info
-          conda list
-      - name: Cmd.exe
-        shell: cmd /C CALL {0}
-        run: >-
           conda info && conda list
+          conda create -n M17 vs2019_win-64 cmake ninja pkg-config boost-cpp gtest gmock gtest libcodec2
+          conda activate M17
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Configure
+        run: |
+          mkdir build
+          cd build
+          cmake -G "Ninja" -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_INSTALL_PREFIX:PATH="%LIBRARY_PREFIX%" -DCMAKE_PREFIX_PATH:PATH="%LIBRARY_PREFIX%" ..
+      - name: Compile
+        working-directory: build
+        run: cmake --build . --config Release --
+      - name: Test
+        working-directory: build
+        run: ctest --build-config Release --output-on-failure --timeout 120
+      - name: Zip Artifacts
+        working-directory: build
+        uses: vimtor/action-zip@v1
+        with:
+          files: m17-mod.exe m17-demod.exe m17-gateway-link_mod.exe m17-gateway_link_demod.exe
+          dest: M17-Tools-Win-x64.zip
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: Release-Win64
+          path: build/M17-Tools-Win-x64.zip
