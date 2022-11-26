@@ -76,16 +76,18 @@ jobs:
       - name: Compile
         working-directory: build
         run: cmake --build . --config Release --
-      - name: Test
-        working-directory: build
-        run: ctest --build-config Release --output-on-failure --timeout 120
       - name: Zip Artifacts
+        working-directory: build
         uses: vimtor/action-zip@v1
         with:
-          files: build/m17-mod.exe build/m17-demod.exe build/m17-gateway-link_mod.exe build/m17-gateway_link_demod.exe
-          dest: build/M17-Tools-Win-x64.zip
+          files: m17-mod.exe m17-demod.exe m17-gateway-link_mod.exe m17-gateway_link_demod.exe
+          dest: M17-Tools-Win-x64.zip
       - name: Upload Artifact
+        working-directory: build
         uses: actions/upload-artifact@v3
         with:
           name: M17-Tools-Win-x64
-          path: build/M17-Tools-Win-x64.zip
+          path: M17-Tools-Win-x64.zip
+      - name: Test
+        working-directory: build
+        run: ctest --build-config Release --output-on-failure --timeout 120 -j3
