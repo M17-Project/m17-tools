@@ -11,7 +11,7 @@ running.
 
 ## m17-mod
 This program reads in an 8k samples per second, signed 16-bit little-endian, single channel raw audio
-stream from STDIN and writes out an M17 4-FSK baseband stream at 48k SPS,
+stream from STDIN and writes out an M17 4FSK baseband stream at 48k SPS,
 16-bit, 1 channel to STDOUT.
 
 ## m17-gateway-link_mod
@@ -27,12 +27,12 @@ It translates M17 baseband to the M17-over-IP traffic (reflector traffic).
 
 ### Prerequisites
 
-This code requires the codec2-devel, boost-devel and gtest-devel packages be installed.
+This code requires the codec2-devel, boost-devel, gtest-devel, libgl-dev, and xorg-dev packages be installed.
 
 It also requires a modern C++17 compiler (GCC 8 minimum).
 
 ### Build steps
-	sudo apt-get install libgl-dev
+	sudo apt-get install libgl-dev xorg-dev
 	cd thirdparty/rtaudio
 	mkdir build
 	cd build
