@@ -533,7 +533,7 @@ struct Config
 
         if (result.debug + result.verbose + result.quiet > 1)
         {
-            std::cerr << "Only one of quiet, verbos or debug may be chosen." << std::endl;
+            std::cerr << "Only one of quiet, verbose or debug may be chosen." << std::endl;
             return std::nullopt;
         }
 
