@@ -72,7 +72,7 @@ jobs:
           mkdir build
           cd build
           conda activate M17
-          cmake -G "Ninja" -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_INSTALL_PREFIX:PATH="%LIBRARY_PREFIX%" -DCMAKE_PREFIX_PATH:PATH="%LIBRARY_PREFIX%" ..
+          cmake -G "Ninja" -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_INSTALL_PREFIX:PATH="D:/" -DCMAKE_PREFIX_PATH:PATH="%LIBRARY_PREFIX%" ..
       - name: Compile
         working-directory: build
         run: cmake --build . --config Release --
@@ -80,12 +80,11 @@ jobs:
         working-directory: build
         run: cmake --build . --config Release --target install
       - name: Zip Artifacts
-        uses: vimtor/action-zip@v1
-        with:
-          files: bin m17-cxx/bin m17-tools/bin m17-tools/build/apps
-          dest: bin/M17-Tools-Win-x64.zip
+        run: |
+          cd D:/bin
+          powershell Compress-Archive . M17-Tools-Win-x64.zip
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
           name: M17-Tools-Win-x64
-          path: bin/M17-Tools-Win-x64.zip
+          path: D:/bin/M17-Tools-Win-x64.zip
