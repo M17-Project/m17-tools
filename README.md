@@ -32,13 +32,14 @@ This code requires the codec2-devel, boost-devel, gtest-devel, libgl-dev, and xo
 It also requires a modern C++17 compiler (GCC 8 minimum).
 
 ### Build steps
-	sudo apt-get install libgl-dev xorg-dev
-	cd thirdparty/rtaudio
-	mkdir build
-	cd build
-	cmake ..
-	make
-	cd ../../../
+    sudo apt-get install libgl-dev xorg-dev
+    cd m17-tools
+    cd thirdparty/rtaudio
+    mkdir build
+    cd build
+    cmake ..
+    make
+    cd ../../../
 	
     mkdir build
     cd build
