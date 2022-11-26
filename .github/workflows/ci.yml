@@ -1,0 +1,49 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  linux-build:
+    name: Linux CI
+    strategy:
+      matrix:
+        image:
+          - "ubuntu:20.04"
+          - "ubuntu:22.04"
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ matrix.image }}
+      env:
+        DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Install dependencies
+        run: |
+          apt-get update -qq
+          apt-get install -y \
+            build-essential \
+            cmake \
+            libboost-program-options-dev \
+            libcodec2-dev \
+            libgl-dev \
+            libgtest-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxinerama-dev \
+            libxrandr-dev \
+            --no-install-recommends
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Configure
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+      - name: Compile
+        working-directory: build
+        run: make -j4
+      - name: Test
+        working-directory: build
+        run: make test
+      - name: Install
+        working-directory: build
+        run: make install
