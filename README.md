@@ -11,7 +11,7 @@ running.
 
 ## m17-mod
 This program reads in an 8k samples per second, signed 16-bit little-endian, single channel raw audio
-stream from STDIN and writes out an M17 4-FSK baseband stream at 48k SPS,
+stream from STDIN and writes out an M17 4FSK baseband stream at 48k SPS,
 16-bit, 1 channel to STDOUT.
 
 ## m17-gateway-link_mod
@@ -27,12 +27,20 @@ It translates M17 baseband to the M17-over-IP traffic (reflector traffic).
 
 ### Prerequisites
 
-This code requires the codec2-devel, boost-devel and gtest-devel packages be installed.
+This code requires the codec2-devel, boost-devel, gtest-devel, libgl-dev, and xorg-dev packages be installed.
 
 It also requires a modern C++17 compiler (GCC 8 minimum).
 
 ### Build steps
-
+    sudo apt-get install libgl-dev xorg-dev
+    cd m17-tools
+    cd thirdparty/rtaudio
+    mkdir build
+    cd build
+    cmake ..
+    make
+    cd ../../../
+	
     mkdir build
     cd build
     cmake ..
@@ -106,7 +114,7 @@ specification document for more details on [file formats](https://spec.m17projec
     -s for symbols output (signed 8-bit, 4.8k per second),
     -K for AES key, automatic mute if encrypted transmission and no key provided.
 
-The demodulator produces diagnost output which looks like:
+The demodulator produces diagnostic output which looks like:
 
     SRC: BROADCAST, DEST: AB3CD, TYPE: 0002, NONCE: 0000000000000000000000000000, CRC: bb9b
     dcd: 1, evm:    13.27%, deviation:   0.9857, freq offset:  0.03534, locked:   true, clock:        1, sample: 0, 0, 0, cost: 9

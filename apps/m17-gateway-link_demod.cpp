@@ -186,9 +186,9 @@ bool dump_lsf(std::array<T, N> const& lsf)
     current_packet.clear();
     packet_frame_counter = 0;
 
-    if (!lsf[111]) // LSF type bit 0
+    if (!(lsf[13] & 1)) // LSF type bit 0
     {
-        uint8_t packet_type = (lsf[109] << 1) | lsf[110];
+        uint8_t packet_type = (lsf[13] & 6) >> 1;
 
         switch (packet_type)
         {
@@ -241,7 +241,9 @@ bool decode_packet(mobilinkd::M17FrameDecoder::packet_buffer_t const& packet_seg
     if (packet_segment[25] & 0x80) // last frame of packet.
     {
         size_t packet_size = (packet_segment[25] & 0x7F) >> 2;
+        
         packet_size = std::min<size_t>(packet_size, size_t(25));
+        
         for (size_t i = 0; i != packet_size; ++i)
         {
             current_packet.push_back(packet_segment[i]);
@@ -290,7 +292,9 @@ bool decode_full_packet(mobilinkd::M17FrameDecoder::packet_buffer_t const& packe
     if (packet_segment[25] & 0x80) // last packet;
     {
         size_t packet_size = (packet_segment[25] & 0x7F) >> 2;
+        
         packet_size = std::min<size_t>(packet_size, size_t(25));
+        
         for (size_t i = 0; i != packet_size; ++i)
         {
             current_packet.push_back(packet_segment[i]);
@@ -451,9 +455,7 @@ void diagnostic_callback(bool dcd, FloatType evm, FloatType deviation, FloatType
         }
     
         auto ber = double(prbs.errors()) / double(prbs.bits());
-        char buffer[40];
-        snprintf(buffer, 40, "BER: %-1.6lf (%lu bits)", ber, prbs.bits());
-        std::cerr << buffer;
+        std::cerr << "BER: " << std::fixed << std::setprecision(6) << ber << " (" << prbs.bits() << ")";
     }
     std::cerr << std::flush;
 }
@@ -527,7 +529,7 @@ struct Config
 
         if (result.debug + result.verbose + result.quiet > 1)
         {
-            std::cerr << "Only one of quiet, verbos or debug may be chosen." << std::endl;
+            std::cerr << "Only one of quiet, verbose or debug may be chosen." << std::endl;
             return std::nullopt;
         }
 

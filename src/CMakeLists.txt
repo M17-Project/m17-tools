@@ -4,6 +4,8 @@ add_library(m17cxx INTERFACE)
 
 add_subdirectory(tiny-AES-c)
 
+add_subdirectory(imgui)
+
 add_library(external Log.cpp UDPSocket.cpp)
 
 target_include_directories(m17cxx INTERFACE
@@ -43,4 +45,3 @@ install(TARGETS m17cxx
     BUNDLE DESTINATION bin COMPONENT Runtime
     INCLUDES DESTINATION include
     )
-
