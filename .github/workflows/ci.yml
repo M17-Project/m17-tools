@@ -75,13 +75,10 @@ jobs:
           conda activate M17
           cmake -G "Ninja" -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_INSTALL_PREFIX:PATH="D:/" -DCMAKE_PREFIX_PATH:PATH="%LIBRARY_PREFIX%" ..
       - name: Compile RtAudio
-        working-directory: build
         run: cmake --build . --config Release --
       - name: Install RtAudio
-        working-directory: build
         run: copy rtaudio.dll D:\\bin\\
       - name: Configure
-        working-directory: build
         run: |
           cd ../../../
           mkdir build
