@@ -79,7 +79,7 @@ jobs:
         run: cmake --build . --config Release --
       - name: Install RtAudio
         working-directory: thirdparty/rtaudio/build
-        run: copy rtaudio.dll D:\\bin\\
+        run: ECHO F|xcopy rtaudio.dll D:\bin\rtaudio.dll
       - name: Configure
         working-directory: thirdparty/rtaudio/build
         run: |
