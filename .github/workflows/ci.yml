@@ -95,10 +95,8 @@ jobs:
         working-directory: build
         run: cmake --build . --config Release --target install
       - name: Add DLLs
-        shell: cmd /C CALL {0}
-        run: |
-          cd D:/bin
-          for /f %i in ('where libcodec2.dll') do for /f %a in ('dumpbin /DEPENDENTS m17-mod.exe ^| findstr .*dll ^| findstr /V K.') do ECHO F|xcopy %i\..\%a .\%a
+        working-directory: build
+        run: packzip.bat
       - name: Upload Artifacts
         uses: actions/upload-artifact@v3
         with:
