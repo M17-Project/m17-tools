@@ -93,12 +93,11 @@ jobs:
         run: cmake --build . --config Release --
       - name: Install
         working-directory: build
-        run: |
-          cmake --build . --config Release --target install
-          
+        run: cmake --build . --config Release --target install
       - name: Add DLLs
         continue-on-error: true
         run: |
+          cd D:/bin
           for /f %i in ('where libcodec2.dll') do set VAR=%i
           for /f %i in ('dumpbin /DEPENDENTS m17-mod.exe ^| findstr .*dll ^| findstr /V K.') do ECHO F|xcopy %VAR%\..\%i .\%i
       - name: Upload Artifacts
