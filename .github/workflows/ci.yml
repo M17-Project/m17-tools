@@ -30,11 +30,27 @@ jobs:
             libxi-dev \
             libxinerama-dev \
             libxrandr-dev \
+            libasound2-dev \
             --no-install-recommends
       - name: Checkout code
         uses: actions/checkout@v3
-      - name: Configure
+      - name: Configure RtAudio
         run: |
+          cd thirdparty/rtaudio
+          ./configure  --with-jack --with-alsa --with-pulse
+          mkdir build
+          cd build
+          cmake ..
+      - name: Compile RtAudio
+        working-directory: thirdparty/rtaudio/build
+        run: make -j4
+      - name: Install Rtaudio
+        working-directory: thirdparty/rtaudio/build
+        run: make install
+      - name: Configure
+        working-directory: thirdparty/rtaudio/build
+        run: |
+          cd ../../../
           mkdir build
           cd build
           cmake ..
@@ -90,15 +106,29 @@ jobs:
           cmake -G "Ninja" -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_INSTALL_PREFIX:PATH="D:/" -DCMAKE_PREFIX_PATH:PATH="%LIBRARY_PREFIX%" ..
       - name: Compile
         working-directory: build
-        run: cmake --build . --config Release --
+        run: cmake --build . --config Release -- -j4
       - name: Install
         working-directory: build
         run: cmake --build . --config Release --target install
       - name: Add DLLs
         run: |
           cd C:\Miniconda3\envs\M17
-          dir 
-          xcopy Library\bin\*dll D:\bin\
+          xcopy Library\bin\api-ms-win-crt-time-l1-1-0.dll D:\bin\
+          xcopy Library\bin\api-ms-win-crt-string-l1-1-0.dll D:\bin\
+          xcopy Library\bin\api-ms-win-crt-convert-l1-1-0.dll D:\bin\
+          xcopy Library\bin\api-ms-win-crt-utility-l1-1-0.dll D:\bin\
+          xcopy Library\bin\libcodec2.dll D:\bin\
+          xcopy Library\bin\boost_program_options.dll D:\bin\
+          xcopy Library\bin\MSVCP140.dll D:\bin\
+          xcopy Library\bin\VCRUNTIME140.dll D:\bin\
+          xcopy Library\bin\VCRUNTIME140_1.dll D:\bin\
+          xcopy Library\bin\api-ms-win-crt-runtime-l1-1-0.dll D:\bin\
+          xcopy Library\bin\api-ms-win-crt-heap-l1-1-0.dll D:\bin\
+          xcopy Library\bin\api-ms-win-crt-stdio-l1-1-0.dll D:\bin\
+          xcopy Library\bin\api-ms-win-crt-locale-l1-1-0.dll D:\bin\
+          xcopy Library\bin\api-ms-win-crt-math-l1-1-0.dll D:\bin\
+          xcopy Library\mingw-w64\bin\libwinpthread-1.dll D:\bin\
+          xcopy Library\mingw-w64\bin\libgcc_s_seh-1.dll D:\bin\
       - name: Upload Artifacts
         uses: actions/upload-artifact@v3
         with:
