@@ -26,6 +26,6 @@ ELSE()
 	add_executable(m17-mod-gui m17-mod-gui.cpp ${IMGUI_SRCS})
 	target_link_libraries(m17-mod-gui PRIVATE m17cxx codec2 Boost::program_options Threads::Threads tiny-AES-c ${IMGUI_LIBS} rtaudio)
 	include_directories(${IMGUI_INCLUDE_DIR} ${PROJECT_SOURCE_DIR}/thirdparty/rtaudio)
-	install(TARGETS m17-demod m17-mod m17-gateway-link_demod m17-gateway-link_mod RUNTIME DESTINATION bin)
+	install(TARGETS m17-demod m17-mod m17-gateway-link_demod m17-gateway-link_mod m17-mod-gui RUNTIME DESTINATION bin)
 ENDIF()
 

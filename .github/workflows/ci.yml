@@ -45,7 +45,9 @@ jobs:
         run: make -j4
       - name: Install Rtaudio
         working-directory: thirdparty/rtaudio/build
-        run: make install
+        run: |
+            make install
+            ldconfig
       - name: Configure
         working-directory: thirdparty/rtaudio/build
         run: |
