@@ -58,6 +58,7 @@ jobs:
           activate-environment: ""
           channels: conda-forge
       - name: Setup Conda
+        shell: cmd /C CALL {0}
         run: conda info
       - name: Install MSVC on Windows
         uses: ilammy/msvc-dev-cmd@v1
