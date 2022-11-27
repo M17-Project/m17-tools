@@ -50,9 +50,6 @@ jobs:
   windows-build:
     name: Windows CI
     runs-on: "windows-2019"
-    defaults:
-      run:
-        shell: cmd /C CALL {0}
     steps:
       - uses: conda-incubator/setup-miniconda@v2
         with:
@@ -70,7 +67,7 @@ jobs:
         run: conda create -n M17 vs2019_win-64 cmake ninja pkg-config boost-cpp gtest gmock gtest libcodec2
       - name: Checkout code
         uses: actions/checkout@v3
-      - name: Configure RtAudio
+      - name: Configure RtAudio 
         run: |
           cd thirdparty/rtaudio
           mkdir build
@@ -98,7 +95,7 @@ jobs:
         working-directory: build
         run: cmake --build . --config Release --target install
       - name: Add DLLs
-        continue-on-error: true
+        shell: cmd /C CALL {0}
         run: |
           cd D:/bin
           for /f %i in ('where libcodec2.dll') do set VAR=%i
