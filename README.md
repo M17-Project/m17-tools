@@ -62,7 +62,7 @@ It also requires a modern C++17 compiler (GCC 8 minimum).
     conda create -n M17 vs2019_win-64 cmake ninja pkg-config boost-cpp gtest gmock gtest libcodec2
     conda activate M17
 
-### And then from the top level of the m17-tools repo, execute win_build.bat
+And then from the top level of the m17-tools repo, execute win_build.bat
 
 ## Running
 
