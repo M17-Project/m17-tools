@@ -37,7 +37,6 @@ jobs:
       - name: Configure RtAudio
         run: |
           cd thirdparty/rtaudio
-          ./configure  --with-jack --with-alsa --with-pulse
           mkdir build
           cd build
           cmake ..

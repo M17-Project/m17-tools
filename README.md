@@ -35,7 +35,6 @@ It also requires a modern C++17 compiler (GCC 8 minimum).
     sudo apt-get install libgl-dev xorg-dev libasound2-dev 
     cd m17-tools
     cd thirdparty/rtaudio
-	./configure  --with-jack --with-alsa --with-pulse
     mkdir build
     cd build
     cmake ..
