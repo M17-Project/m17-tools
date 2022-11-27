@@ -96,7 +96,7 @@ jobs:
         run: cmake --build . --config Release --target install
       - name: Add DLLs
         working-directory: build
-        run: packzip.bat
+        run: ../packzip.bat
       - name: Upload Artifacts
         uses: actions/upload-artifact@v3
         with:
