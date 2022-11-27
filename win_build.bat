@@ -12,26 +12,29 @@ setlocal EnableDelayedExpansion
 set CPU_COUNT=3
 
 :: Build RtAudio
-:: cd thirdparty/rtaudio
+cd thirdparty/rtaudio
 
 :: Make a build folder and change to it
-:: mkdir build
-:: cd build
+mkdir build
+cd build
 
 :: configure
-:: cmake -G "Ninja" ^
-::     -DCMAKE_BUILD_TYPE:STRING=Release ^
-::     -DCMAKE_INSTALL_PREFIX:PATH="%LIBRARY_PREFIX%" ^
-::     -DCMAKE_PREFIX_PATH:PATH="%LIBRARY_PREFIX%" ^
+cmake -G "Ninja" ^
+    -DCMAKE_BUILD_TYPE:STRING=Release ^
+    -DCMAKE_INSTALL_PREFIX:PATH="%LIBRARY_PREFIX%" ^
+    -DCMAKE_PREFIX_PATH:PATH="%LIBRARY_PREFIX%" ^
     ..
-:: if errorlevel 1 exit /B 1
+if errorlevel 1 exit /B 1
 
 :: build
-:: cmake --build . --config Release -- -j%CPU_COUNT%
-:: if errorlevel 1 exit /B 1
+cmake --build . --config Release -- -j%CPU_COUNT%
+if errorlevel 1 exit /B 1
+
+:: install
+IF [%LIBRARY_PREFIX%] == [] (copy rtaudio.dll %CD:~0,3%\bin\) ELSE (copy rtaudio.dll %LIBRARY_PREFIX%\bin\)
 
 ::go back to m17-tools
-:: cd ../../../
+cd ../../../
 
 :: Make a build folder and change to it
 mkdir build

@@ -67,8 +67,23 @@ jobs:
         run: conda create -n M17 vs2019_win-64 cmake ninja pkg-config boost-cpp gtest gmock gtest libcodec2
       - name: Checkout code
         uses: actions/checkout@v3
-      - name: Configure
+      - name: Configure RtAudio
         run: |
+          cd thirdparty/rtaudio
+          mkdir build
+          cd build
+          conda activate M17
+          cmake -G "Ninja" -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_INSTALL_PREFIX:PATH="D:/" -DCMAKE_PREFIX_PATH:PATH="%LIBRARY_PREFIX%" ..
+      - name: Compile RtAudio
+        working-directory: build
+        run: cmake --build . --config Release --
+      - name: Install RtAudio
+        working-directory: build
+        run: copy rtaudio.dll D:\\bin\\
+      - name: Configure
+        working-directory: build
+        run: |
+          cd ../../../
           mkdir build
           cd build
           conda activate M17
@@ -78,13 +93,16 @@ jobs:
         run: cmake --build . --config Release --
       - name: Install
         working-directory: build
-        run: cmake --build . --config Release --target install
-      - name: Zip Artifacts
         run: |
-          cd D:/bin
-          powershell Compress-Archive . M17-Tools-Win-x64.zip
-      - name: Upload Artifact
+          cmake --build . --config Release --target install
+          
+      - name: Add DLLs
+        continue-on-error: true
+        run: |
+          for /f %i in ('where libcodec2.dll') do set VAR=%i
+          for /f %i in ('dumpbin /DEPENDENTS m17-mod.exe ^| findstr .*dll ^| findstr /V K.') do ECHO F|xcopy %VAR%\..\%i .\%i
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v3
         with:
           name: M17-Tools-Win-x64
-          path: D:/bin/M17-Tools-Win-x64.zip
+          path: D:/bin/
