@@ -98,8 +98,7 @@ jobs:
         shell: cmd /C CALL {0}
         run: |
           cd D:/bin
-          for /f %i in ('where libcodec2.dll') do set VAR=%i
-          for /f %i in ('dumpbin /DEPENDENTS m17-mod.exe ^| findstr .*dll ^| findstr /V K.') do ECHO F|xcopy %VAR%\..\%i .\%i
+          for /f %i in ('where libcodec2.dll') do for /f %a in ('dumpbin /DEPENDENTS m17-mod.exe ^| findstr .*dll ^| findstr /V K.') do ECHO F|xcopy %i\..\%a .\%a
       - name: Upload Artifacts
         uses: actions/upload-artifact@v3
         with:
