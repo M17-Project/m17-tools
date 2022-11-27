@@ -95,8 +95,10 @@ jobs:
         working-directory: build
         run: cmake --build . --config Release --target install
       - name: Add DLLs
-        working-directory: build
-        run: ..\packzip.bat
+        run: |
+          cd C:\Miniconda3\envs\M17
+          dir 
+          xcopy Library\bin\*dll D:\bin\
       - name: Upload Artifacts
         uses: actions/upload-artifact@v3
         with:
