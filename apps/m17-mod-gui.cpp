@@ -1033,6 +1033,7 @@ int main(int argc, char* argv[])
             ImGui::InputTextWithHint("SRC", "SRC CALLSIGN", str1, 7, ImGuiInputTextFlags_CharsUppercase);
             ImGui::InputTextWithHint("DST", "DST CALLSIGN", str2, 7, ImGuiInputTextFlags_CharsUppercase);
             ImGui::InputInt("CAN", &config->can);
+	    config->can = std::min<int>(15,std::max<int>(0,config->can));
             ImGui::Checkbox("Invert", &config->invert);
             ImGui::Checkbox("Encrypt", &config->encrypt);
             ImGui::InputText("AES Key", buf, 128, ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
