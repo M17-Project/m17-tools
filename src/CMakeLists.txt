@@ -4,7 +4,9 @@ add_library(m17cxx INTERFACE)
 
 add_subdirectory(tiny-AES-c)
 
-add_subdirectory(imgui)
+IF(BUILD_GUI_APPS)
+	add_subdirectory(imgui)
+ENDIF()
 
 add_library(external Log.cpp UDPSocket.cpp)
 
