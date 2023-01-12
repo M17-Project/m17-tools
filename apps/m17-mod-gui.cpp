@@ -45,6 +45,7 @@
 #include <signal.h>
 
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include <stdio.h>
@@ -54,6 +55,79 @@
 #endif
 #include <GLFW/glfw3.h> // Will drag system OpenGL headers
 #include <RtAudio.h>
+#include "../external/serialib.h"
+
+#if defined (_WIN32) || defined(_WIN64)
+    //for serial ports above "COM9", we must use this extended syntax of "\\.\COMx".
+    //also works for COM0 to COM9.
+    //https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea?redirectedfrom=MSDN#communications-resources
+    std::vector<std::string> get_available_ports(serialib &serial){
+        std::vector<std::string> port_names;
+        for (int i = 0; i < 255; i++)
+        {
+           std::string name = "\\\\.\\COM" + std::to_string(i);
+           char errorOpening = serial.openDevice(name.c_str(), 115200);
+           // If connection fails, return the error code otherwise, display a success message
+           if (errorOpening==1){
+            port_names.push_back(name);
+            serial.closeDevice();
+           }
+        }
+        return port_names;
+    }
+#endif
+#if defined (__linux__) || defined(__APPLE__)
+    #include <filesystem>
+    #include <fstream>
+    std::vector<std::string> get_available_ports(serialib &serial) {
+    std::vector<std::string> ports;
+    std::filesystem::path kdr_path = "/proc/tty/drivers";
+    if (std::filesystem::exists(kdr_path))
+    {
+        std::ifstream ifile(kdr_path.generic_string());
+        std::string line;
+        std::vector<std::string> prefixes;
+        while (std::getline(ifile, line))
+        {
+            std::vector<std::string> items;
+            auto it = line.find_first_not_of(' ');
+            while (it != std::string::npos)
+            {
+
+                auto it2 = line.substr(it).find_first_of(' ');
+                if (it2 == std::string::npos)
+                {
+                    items.push_back(line.substr(it));
+                    break;
+                }
+                it2 += it;
+                items.push_back(line.substr(it, it2 - it));
+                it = it2 + line.substr(it2).find_first_not_of(' ');
+            }
+            if (items.size() >= 5)
+            {
+                if (items[4] == "serial" && items[0].find("serial") != std::string::npos)
+                {
+                    prefixes.emplace_back(items[1]);
+                }
+            }
+        }
+        ifile.close();
+        for (auto& p: std::filesystem::directory_iterator("/dev"))
+        {
+            for (const auto& pf : prefixes)
+            {
+                auto dev_path = p.path().generic_string();
+                if (dev_path.size() >= pf.size() && std::equal(dev_path.begin(), dev_path.begin() + pf.size(), pf.begin()))
+                {
+                    ports.emplace_back(dev_path);
+                }
+            }
+        }
+    }
+    return ports;
+    }
+#endif
 
 uint8_t Key[32];	
 uint8_t Iv[16];
@@ -348,6 +422,18 @@ void output_symbols(std::array<uint8_t, 2> sync_word, const bitstream_t& frame)
     for (auto b : temp) std::cout << b;
 }
 
+using lich_segment_t = std::array<uint8_t, 96>;
+using lich_t = std::array<lich_segment_t, 6>;
+using queue_t = mobilinkd::queue<int16_t, 320>;
+using audio_frame_t = std::array<int16_t, 320>;
+using codec_frame_t = std::array<uint8_t, 16>;
+using data_frame_t = std::array<int8_t, 272>;
+
+std::shared_ptr<queue_t>squeue;
+std::shared_ptr<queue_t>basebandQueue;
+
+bool doBasebandCout = true;
+
 
 // rrc
 void output_baseband(std::array<uint8_t, 2> sync_word, const bitstream_t& frame)
@@ -359,7 +445,16 @@ void output_baseband(std::array<uint8_t, 2> sync_word, const bitstream_t& frame)
     auto fit = std::copy(sw.begin(), sw.end(), temp.begin());
     std::copy(symbols.begin(), symbols.end(), fit);
     auto baseband = symbols_to_baseband(temp);
-    for (auto b : baseband) std::cout << uint8_t(b & 0xFF) << uint8_t(b >> 8);
+    for (auto b : baseband){
+        if(!doBasebandCout && basebandQueue->is_open()){
+            if(!basebandQueue->put(b, std::chrono::milliseconds(400))){
+                std::cerr<<"output_baseband(): ERROR OUTPUT QUEUE\n";
+            }
+        }
+        else{
+            std::cout << uint8_t(b & 0xFF) << uint8_t(b >> 8);
+        }
+    } 
 }
 
 
@@ -400,7 +495,16 @@ void send_preamble()
             { // OutputType::RRC
                 auto preamble_symbols = bytes_to_symbols(preamble_bytes);
                 auto preamble_baseband = symbols_to_baseband(preamble_symbols);
-                for (auto b : preamble_baseband) std::cout << uint8_t(b & 0xFF) << uint8_t(b >> 8);
+                for (auto b : preamble_baseband){
+                    if(!doBasebandCout && basebandQueue->is_open()){
+                        if(!basebandQueue->put(b, std::chrono::milliseconds(400))){
+                            std::cerr<<"send_preamble(): ERROR OUTPUT QUEUE\n";
+                        }
+                    }
+                    else{
+                        std::cout << uint8_t(b & 0xFF) << uint8_t(b >> 8);
+                    }
+                } 
             }
             break;
     }
@@ -451,12 +555,30 @@ void output_eot()
                     }
                 }
                 auto baseband = symbols_to_baseband(out_symbols);
-                for (auto b : baseband) std::cout << uint8_t(b & 0xFF) << uint8_t(b >> 8);
+                for (auto b : baseband){
+                    if(!doBasebandCout && basebandQueue->is_open()){
+                        if(!basebandQueue->put(b, std::chrono::milliseconds(400))){
+                            std::cerr<<"send_eot(): ERROR OUTPUT QUEUE\n";
+                        }
+                    }
+                    else{
+                        std::cout << uint8_t(b & 0xFF) << uint8_t(b >> 8);
+                    }
+                }
 				
 				std::array<int8_t, 192> flush_symbols;
 				flush_symbols.fill(0);
 				auto f_baseband = symbols_to_baseband(flush_symbols);
-                for (auto b : f_baseband) std::cout << uint8_t(b & 0xFF) << uint8_t(b >> 8);
+                for (auto b : f_baseband) {
+                    if(!doBasebandCout && basebandQueue->is_open()){
+                        if(!basebandQueue->put(b, std::chrono::milliseconds(400))){
+                            std::cerr<<"send_eot(): ERROR OUTPUT QUEUE\n";
+                        }
+                    }
+                    else{
+                        std::cout << uint8_t(b & 0xFF) << uint8_t(b >> 8);
+                    }
+                }
             }
             break;
     }
@@ -562,13 +684,6 @@ lsf_t send_lsf(const std::string& src, const std::string& dest, const FrameType 
 
     return result;
 }
-
-using lich_segment_t = std::array<uint8_t, 96>;
-using lich_t = std::array<lich_segment_t, 6>;
-using queue_t = mobilinkd::queue<int16_t, 320>;
-using audio_frame_t = std::array<int16_t, 320>;
-using codec_frame_t = std::array<uint8_t, 16>;
-using data_frame_t = std::array<int8_t, 272>;
 
 /**
  * Encode 2 frames of data.  Caller must ensure that the audio is
@@ -818,30 +933,97 @@ void transmit(std::shared_ptr<queue_t>& queue, const lsf_t& lsf)
     codec2_destroy(codec2);
 }
 
-std::shared_ptr<queue_t>squeue;
-
-int record( void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames,
-         double streamTime, RtAudioStreamStatus status, void *userData )
+int record( void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames, double streamTime, RtAudioStreamStatus status, void *userData )
 {
-  if ( status )
-    std::cout << "Stream overflow detected!" << std::endl;
-    //std::vector<int16_t> input(nBufferFrames), output;
-    // Do something with the data in the "inputBuffer" buffer.
-    //resample<int16_t> ( 1, 6, input, output );
+    if ( status )
+        std::cout << "Stream overflow detected!" << std::endl;
+    
     for(unsigned int i=0; i<nBufferFrames; i++){
         uint16_t sample = ((int16_t*)inputBuffer)[i];
         if(!squeue->put(sample, std::chrono::seconds(300))){
-            std::cerr<<"ERROR QUEUE";
+            std::cerr<<"record(): ERROR INPUT QUEUE";
         }
     }
     return 0;
 }
+
+//int last = 0;
+
+int playback( void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames, double streamTime, RtAudioStreamStatus status, void *userData )
+{
+    if ( status )
+        std::cout << "Stream overflow detected!" << std::endl;
+
+    std::vector<int16_t> output(nBufferFrames);
+
+    for(unsigned int i=0; i<nBufferFrames; i++){
+        int16_t sample; 
+        if(basebandQueue->is_closed()){
+            output[i] = 0;
+        }else if(!basebandQueue->get(sample, std::chrono::milliseconds(300))){
+            break;
+        }
+        output[i] = sample;
+    }
+
+    memcpy(outputBuffer,(void*)(&output[0]),nBufferFrames*sizeof(int16_t));
+
+    return 0;
+}
+
+void drawTestDock()
+{
+	bool open = true;
+
+	ImGuiWindowFlags window_flags = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
+	ImGuiViewport* viewport = ImGui::GetMainViewport();
+	ImGui::SetNextWindowPos(viewport->Pos);
+	ImGui::SetNextWindowSize(viewport->Size);
+	ImGui::SetNextWindowViewport(viewport->ID);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+	window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
+	window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+	ImGui::Begin("DockSpace Demo", &open, window_flags);
+	ImGui::PopStyleVar();
+
+	ImGui::PopStyleVar(2);
+
+	if (ImGui::DockBuilderGetNode(ImGui::GetID("MyDockspace")) == NULL)
+	{
+		ImGuiID dockspace_id = ImGui::GetID("MyDockspace");
+		ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+        ImGui::DockBuilderRemoveNode(dockspace_id); // Clear out existing layout
+        ImGui::DockBuilderAddNode(dockspace_id, window_flags); // Add empty node
+        ImGui::DockBuilderSetNodeSize(dockspace_id, viewport->Size);
+
+		ImGuiID dock_main_id = dockspace_id; // This variable will track the document node, however we are not using it here as we aren't docking anything into it.
+		ImGuiID dock_id_left = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Left, 0.20f, NULL, &dock_main_id);
+		ImGuiID dock_id_right = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Right, 0.20f, NULL, &dock_main_id);
+		ImGuiID dock_id_bottom = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Down, 0.4f, NULL, &dock_main_id);
+
+		
+		ImGui::DockBuilderDockWindow("M17 Modulator", dock_main_id);
+		ImGui::DockBuilderDockWindow("Audio", dock_id_bottom);
+        ImGui::DockBuilderDockWindow("Rig Control", dock_id_bottom);
+		ImGui::DockBuilderFinish(dockspace_id);
+	}
+    
+	ImGuiID dockspace_id = ImGui::GetID("MyDockspace");
+	ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), 0);
+	ImGui::End();
+}
+
 
 
 static void glfw_error_callback(int error, const char* description)
 {
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
 }
+
 
 int main(int argc, char* argv[])
 {
@@ -915,7 +1097,7 @@ int main(int argc, char* argv[])
 #endif
 
     // Create window with graphics context
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "Dear ImGui GLFW+OpenGL3 example", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(300, 500, "Dear ImGui GLFW+OpenGL3 example", NULL, NULL);
     if (window == NULL)
         return 1;
     glfwMakeContextCurrent(window);
@@ -977,6 +1159,7 @@ int main(int argc, char* argv[])
     std::string ptt[2] = {"OFF","ON"};
 
     RtAudio adc;
+    RtAudio dac;
     std::vector< unsigned int > ids = adc.getDeviceIds();
     if ( ids.size() == 0 ) {
       std::cout << "No devices found." << std::endl;
@@ -984,12 +1167,15 @@ int main(int argc, char* argv[])
     }
 
     std::vector<std::string> in_device_names;
-    std::vector<int> in_device_ids;
-    int in_dev_id=0;
-
     std::vector<std::string> out_device_names;
-    out_device_names.push_back("STD::COUT");
+
+    std::vector<int> in_device_ids;
+    std::vector<int> out_device_ids;
+
+    int in_dev_id=0;
     int out_dev_id=0;
+    
+    out_device_names.push_back("STD::COUT");
 
     RtAudio::DeviceInfo info;
     for ( unsigned int n=0; n<ids.size(); n++ ) {
@@ -1002,16 +1188,47 @@ int main(int argc, char* argv[])
         }
     }
 
-    RtAudio::StreamParameters parameters;
-    parameters.deviceId = in_device_ids[in_dev_id];
-    parameters.nChannels = 1;
-    parameters.firstChannel = 0;
-    unsigned int sampleRate = 8000;
-    unsigned int bufferFrames = 320; // 320 sample frames
+    for ( unsigned int n=0; n<ids.size(); n++ ) {
+        info = dac.getDeviceInfo( ids[n] );
+        if(info.outputChannels>0){
+            out_device_names.push_back(std::string(info.name));
+            out_device_ids.push_back(ids[n]);
+            if(info.isDefaultInput)
+                out_dev_id = out_device_ids.size()-1;
+        }
+    }
 
-    adc.openStream( NULL, &parameters, RTAUDIO_SINT16, sampleRate, &bufferFrames, &record );
+    RtAudio::StreamParameters in_parameters;
+    in_parameters.deviceId = in_device_ids[in_dev_id];
+    in_parameters.nChannels = 1;
+    in_parameters.firstChannel = 0;
+    unsigned int in_sampleRate = 8000;
+    unsigned int in_bufferFrames = 320; // 320 sample frames
+
+    RtAudio::StreamParameters out_parameters;
+    out_parameters.deviceId = out_device_ids[out_dev_id];
+    out_parameters.nChannels = 1;
+    out_parameters.firstChannel = 0;
+    unsigned int out_sampleRate = 48000;
+    unsigned int out_bufferFrames = 320; // 320 sample frames
+
+    adc.openStream( NULL, &in_parameters, RTAUDIO_SINT16, in_sampleRate, &in_bufferFrames, &record );
+
+    dac.openStream( &out_parameters,  NULL, RTAUDIO_SINT16, out_sampleRate, &out_bufferFrames, &playback );
 
     std::thread thd;
+
+    serialib serial;
+    std::vector<std::string> Serialports = get_available_ports(serial);
+    int port_id = 0;
+
+    std::vector<int> Serialbaud = {115200};
+    int baud_id = 0;
+
+    std::vector<std::string> Serialptt = {"DTR","RTS"};
+    int ptt_id = 0;
+
+    bool rig_enabled = 0;
 
     // Main loop
     while (!glfwWindowShouldClose(window))
@@ -1027,6 +1244,10 @@ int main(int argc, char* argv[])
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+
+        {
+            drawTestDock();
+        }
 
         {
             ImGui::Begin("M17 Modulator");
@@ -1068,23 +1289,39 @@ int main(int argc, char* argv[])
                         config->CKEY = std::string(buf);
                         std::string hash = boost::algorithm::unhex(config->CKEY);
                         std::copy(hash.begin(), hash.end(), Key);
+                       
+                        squeue = std::make_shared<queue_t>();
+                        basebandQueue = std::make_shared<queue_t>();
+
+                        adc.startStream();
+                        if(!doBasebandCout){
+                            dac.startStream();
+                        }
 
                         if(has_ptt){
                             std::cerr << "\r\nPTT: ON \n";          
                             system(ptt_on.c_str());
                         }
-                    
+
+                        if(rig_enabled){
+                            switch (baud_id)
+                            {
+                            case 0:
+                                serial.DTR(false);
+                                break;
+                            case 1:
+                                serial.RTS(false);
+                                break;
+                            }
+                        }
+
                         send_preamble();
                     
                         auto lsf = send_lsf(config->source_address, config->destination_address);
 
-                        squeue = std::make_shared<queue_t>();
-
                         running = true;
 
                         thd = std::thread(transmit, std::ref(squeue), std::ref(lsf));
-
-                        adc.startStream();
                     
                         std::cerr << "m17-mod running. ctrl-D to break." << std::endl;
 
@@ -1092,9 +1329,28 @@ int main(int argc, char* argv[])
 
                     }else{
                         running = false;
+                        
                         adc.stopStream();
                         squeue.get()->close();
+                        
                         thd.join();
+
+                        basebandQueue.get()->close();
+                        if(!doBasebandCout){
+                            dac.stopStream();
+                        }
+
+                        if(rig_enabled){
+                            switch (baud_id)
+                            {
+                            case 0:
+                                serial.DTR(false);
+                                break;
+                            case 1:
+                                serial.RTS(false);
+                                break;
+                            }
+                        }
                         
                         if(has_ptt){
                             std::cerr << "\r\nPTT: OFF \n";          
@@ -1124,13 +1380,20 @@ int main(int argc, char* argv[])
                         if(running){
                             tx = false;
                             running = false;
+
                             adc.stopStream();
                             squeue.get()->close();
+                            
                             thd.join();
+
+                            basebandQueue.get()->close();
+                            if(!doBasebandCout){
+                                dac.stopStream();
+                            }
                         }
                         adc.closeStream();
-                        parameters.deviceId = in_device_ids[in_dev_id];
-                        adc.openStream( NULL, &parameters, RTAUDIO_SINT16, sampleRate, &bufferFrames, &record );
+                        in_parameters.deviceId = in_device_ids[in_dev_id];
+                        adc.openStream( NULL, &in_parameters, RTAUDIO_SINT16, in_sampleRate, &in_bufferFrames, &record );
                     }
 
                     // Set the initial focus when opening the combo
@@ -1148,6 +1411,31 @@ int main(int argc, char* argv[])
                     const bool isSelected = (out_dev_id == i);
                     if (ImGui::Selectable(out_device_names[i].c_str(), isSelected)) {
                         out_dev_id = i;
+                        
+                        if(running){
+                            tx = false;
+                            running = false;
+                            
+                            adc.stopStream();
+                            squeue.get()->close();
+                            
+                            thd.join();
+
+                            basebandQueue.get()->close();
+                            if(!doBasebandCout){
+                                dac.stopStream();
+                            }
+                        }
+                        if(i>0){
+                            doBasebandCout = false;
+                        }else{
+                            doBasebandCout = true;
+                        }
+                        if(!doBasebandCout){
+                            dac.closeStream();
+                            out_parameters.deviceId = out_device_ids[out_dev_id-1];
+                            dac.openStream( &out_parameters,  NULL, RTAUDIO_SINT16, out_sampleRate, &out_bufferFrames, &playback );
+                        }
                     }
 
                     // Set the initial focus when opening the combo
@@ -1159,6 +1447,90 @@ int main(int argc, char* argv[])
                 ImGui::EndCombo();
             }
             ImGui::End();
+        }
+
+        {
+            ImGui::Begin("Rig Control");
+            ImGui::Checkbox("Enable", &rig_enabled);
+            ImGui::Text("Serial Port:");
+            float menuWidth = ImGui::GetContentRegionAvail().x;
+            ImGui::SetNextItemWidth(menuWidth);
+            if (ImGui::BeginCombo("port_menu",Serialports[port_id].c_str())) {
+                for (int i = 0; i < Serialports.size(); ++i) {
+                    const bool isSelected = (port_id == i);
+                    if (ImGui::Selectable(Serialports[i].c_str(), isSelected)) {
+                        port_id = i;
+
+                        if(running){
+                            tx = false;
+                            running = false;
+                            
+                            adc.stopStream();
+                            squeue.get()->close();
+                            
+                            thd.join();
+
+                            basebandQueue.get()->close();
+                            if(!doBasebandCout){
+                                dac.stopStream();
+                            }
+
+                            if(rig_enabled){
+                                serial.closeDevice();
+                            }
+                        }
+
+                        if(rig_enabled){
+                            serial.closeDevice();
+                            std::cerr << "Trying to open: " << Serialports[port_id] << "\n";
+                            char errorOpening = serial.openDevice(Serialports[port_id].c_str(), 115200);
+                            // If connection fails, return the error code otherwise, display a success message
+                            if (errorOpening!=1) std::cerr << "Error: " << errorOpening << "\n";
+                        }
+                    }
+
+                    // Set the initial focus when opening the combo
+                    // (scrolling + keyboard navigation focus)
+                    if (isSelected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::Text("Baud Rate:");
+            ImGui::SetNextItemWidth(menuWidth);
+            if (ImGui::BeginCombo("baud_menu",std::to_string(Serialbaud[baud_id]).c_str())) {
+                for (int i = 0; i < Serialbaud.size(); ++i) {
+                    const bool isSelected = (baud_id == i);
+                    if (ImGui::Selectable(std::to_string(Serialbaud[i]).c_str(), isSelected)) {
+                        baud_id = i;
+                    }
+
+                    // Set the initial focus when opening the combo
+                    // (scrolling + keyboard navigation focus)
+                    if (isSelected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::Text("PTT Key:");
+            ImGui::SetNextItemWidth(menuWidth);
+            if (ImGui::BeginCombo("ptt_menu",Serialptt[ptt_id].c_str())) {
+                for (int i = 0; i < Serialptt.size(); ++i) {
+                    const bool isSelected = (ptt_id == i);
+                    if (ImGui::Selectable(Serialptt[i].c_str(), isSelected)) {
+                        ptt_id = i;
+                    }
+
+                    // Set the initial focus when opening the combo
+                    // (scrolling + keyboard navigation focus)
+                    if (isSelected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
             ImGui::End();
         }
 

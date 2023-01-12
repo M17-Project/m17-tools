@@ -8,7 +8,7 @@ IF(BUILD_GUI_APPS)
 	add_subdirectory(imgui)
 ENDIF()
 
-add_library(external Log.cpp UDPSocket.cpp)
+add_library(external Log.cpp UDPSocket.cpp serialib.cpp)
 
 target_include_directories(m17cxx INTERFACE
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include/external>
