@@ -1453,7 +1453,16 @@ int main(int argc, char* argv[])
 
         {
             ImGui::Begin("Rig Control");
-            ImGui::Checkbox("Enable", &rig_enabled);
+            if(ImGui::Checkbox("Enable", &rig_enabled)){
+                if(rig_enabled){
+                    std::cerr << "Trying to open: " << Serialports[port_id] << "\n";
+                    char errorOpening = serial.openDevice(Serialports[port_id].c_str(), 115200);
+                    // If connection fails, return the error code otherwise, display a success message
+                    if (errorOpening!=1) std::cerr << "Error: " << errorOpening << "\n";
+                }else{
+                    serial.closeDevice();
+                }
+            }
             ImGui::Text("Serial Port:");
             float menuWidth = ImGui::GetContentRegionAvail().x;
             ImGui::SetNextItemWidth(menuWidth);
