@@ -1304,13 +1304,14 @@ int main(int argc, char* argv[])
                         }
 
                         if(rig_enabled){
-                            switch (baud_id)
+                            switch (ptt_id)
                             {
                             case 0:
-                                serial.DTR(false);
+                                serial.DTR(true);
                                 break;
                             case 1:
-                                serial.RTS(false);
+                                serial.RTS(true);
+                                serial.DTR(true);
                                 break;
                             }
                         }
@@ -1341,13 +1342,14 @@ int main(int argc, char* argv[])
                         }
 
                         if(rig_enabled){
-                            switch (baud_id)
+                            switch (ptt_id)
                             {
                             case 0:
                                 serial.DTR(false);
                                 break;
                             case 1:
                                 serial.RTS(false);
+                                serial.DTR(false);
                                 break;
                             }
                         }
