@@ -169,7 +169,7 @@ struct Config
 
     bool bert = false; // Bit error rate testing.
     bool invert = false;
-    int can = 10;
+    int can = 0; // default is 0
 	
 	bool encrypt = false; //Default is no Encryption
 	std::string CKEY; //AES Key
@@ -427,12 +427,13 @@ void output_symbols(std::array<uint8_t, 2> sync_word, const bitstream_t& frame)
 using lich_segment_t = std::array<uint8_t, 96>;
 using lich_t = std::array<lich_segment_t, 6>;
 using queue_t = mobilinkd::queue<int16_t, 320>;
+using long_queue_t = mobilinkd::queue<int16_t, 1920>;
 using audio_frame_t = std::array<int16_t, 320>;
 using codec_frame_t = std::array<uint8_t, 16>;
 using data_frame_t = std::array<int8_t, 272>;
 
 std::shared_ptr<queue_t>squeue;
-std::shared_ptr<queue_t>basebandQueue;
+std::shared_ptr<long_queue_t>basebandQueue;
 
 bool doBasebandCout = true;
 
@@ -449,7 +450,7 @@ void output_baseband(std::array<uint8_t, 2> sync_word, const bitstream_t& frame)
     auto baseband = symbols_to_baseband(temp);
     for (auto b : baseband){
         if(!doBasebandCout && basebandQueue->is_open()){
-            if(!basebandQueue->put(b, std::chrono::milliseconds(400))){
+            if(!basebandQueue->put(b, std::chrono::milliseconds(3000))){
                 std::cerr<<"output_baseband(): ERROR OUTPUT QUEUE\n";
             }
         }
@@ -499,7 +500,7 @@ void send_preamble()
                 auto preamble_baseband = symbols_to_baseband(preamble_symbols);
                 for (auto b : preamble_baseband){
                     if(!doBasebandCout && basebandQueue->is_open()){
-                        if(!basebandQueue->put(b, std::chrono::milliseconds(400))){
+                        if(!basebandQueue->put(b, std::chrono::milliseconds(3000))){
                             std::cerr<<"send_preamble(): ERROR OUTPUT QUEUE\n";
                         }
                     }
@@ -559,7 +560,7 @@ void output_eot()
                 auto baseband = symbols_to_baseband(out_symbols);
                 for (auto b : baseband){
                     if(!doBasebandCout && basebandQueue->is_open()){
-                        if(!basebandQueue->put(b, std::chrono::milliseconds(400))){
+                        if(!basebandQueue->put(b, std::chrono::seconds(300))){
                             std::cerr<<"send_eot(): ERROR OUTPUT QUEUE\n";
                         }
                     }
@@ -573,7 +574,7 @@ void output_eot()
 				auto f_baseband = symbols_to_baseband(flush_symbols);
                 for (auto b : f_baseband) {
                     if(!doBasebandCout && basebandQueue->is_open()){
-                        if(!basebandQueue->put(b, std::chrono::milliseconds(400))){
+                        if(!basebandQueue->put(b, std::chrono::seconds(300))){
                             std::cerr<<"send_eot(): ERROR OUTPUT QUEUE\n";
                         }
                     }
@@ -683,7 +684,6 @@ lsf_t send_lsf(const std::string& src, const std::string& dest, const FrameType 
     interleaver.interleave(punctured);
     randomizer.randomize(punctured);
     output_frame(LSF_SYNC_WORD, punctured);
-
     return result;
 }
 
@@ -956,19 +956,19 @@ int playback( void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames,
     if ( status )
         std::cout << "Stream overflow detected!" << std::endl;
 
-    std::vector<int16_t> output(nBufferFrames);
+    int16_t *buffer = (int16_t *) outputBuffer;
 
     for(unsigned int i=0; i<nBufferFrames; i++){
         int16_t sample; 
         if(basebandQueue->is_closed()){
-            output[i] = 0;
-        }else if(!basebandQueue->get(sample, std::chrono::milliseconds(300))){
+            sample = 0;
+        }else if(!basebandQueue->get(sample, std::chrono::milliseconds(3000))){
             break;
         }
-        output[i] = sample;
+        for (unsigned int j=0; j<2; j++ ) {
+            *buffer++ = sample;
+        }
     }
-
-    memcpy(outputBuffer,(void*)(&output[0]),nBufferFrames*sizeof(int16_t));
 
     return 0;
 }
@@ -1209,10 +1209,10 @@ int main(int argc, char* argv[])
 
     RtAudio::StreamParameters out_parameters;
     out_parameters.deviceId = out_device_ids[out_dev_id];
-    out_parameters.nChannels = 1;
+    out_parameters.nChannels = 2;
     out_parameters.firstChannel = 0;
     unsigned int out_sampleRate = 48000;
-    unsigned int out_bufferFrames = 320; // 320 sample frames
+    unsigned int out_bufferFrames = 64; // 1920 sample frames
 
     adc.openStream( NULL, &in_parameters, RTAUDIO_SINT16, in_sampleRate, &in_bufferFrames, &record );
 
@@ -1256,7 +1256,7 @@ int main(int argc, char* argv[])
             ImGui::InputTextWithHint("SRC", "SRC CALLSIGN", str1, 7, ImGuiInputTextFlags_CharsUppercase);
             ImGui::InputTextWithHint("DST", "DST CALLSIGN", str2, 7, ImGuiInputTextFlags_CharsUppercase);
             ImGui::InputInt("CAN", &config->can);
-	    config->can = std::min<int>(15,std::max<int>(0,config->can));
+	        config->can = std::min<int>(15,std::max<int>(0,config->can));
             ImGui::Checkbox("Invert", &config->invert);
             ImGui::Checkbox("Encrypt", &config->encrypt);
             ImGui::InputText("AES Key", buf, 128, ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
@@ -1293,7 +1293,7 @@ int main(int argc, char* argv[])
                         std::copy(hash.begin(), hash.end(), Key);
                        
                         squeue = std::make_shared<queue_t>();
-                        basebandQueue = std::make_shared<queue_t>();
+                        basebandQueue = std::make_shared<long_queue_t>();
 
                         adc.startStream();
                         if(!doBasebandCout){
@@ -1318,6 +1318,7 @@ int main(int argc, char* argv[])
                             }
                         }
 
+                        send_preamble();
                         send_preamble();
                     
                         auto lsf = send_lsf(config->source_address, config->destination_address);
