@@ -67,6 +67,8 @@
         {
            std::string name = "\\\\.\\COM" + std::to_string(i);
            char errorOpening = serial.openDevice(name.c_str(), 115200);
+           serial.RTS(false);
+           serial.DTR(false);
            // If connection fails, return the error code otherwise, display a success message
            if (errorOpening==1){
             port_names.push_back(name);
@@ -1226,7 +1228,7 @@ int main(int argc, char* argv[])
     int baud_id = 0;
 
     std::vector<std::string> Serialptt = {"DTR","RTS"};
-    int ptt_id = 0;
+    int ptt_id = 1;
 
     bool rig_enabled = 0;
 
@@ -1459,6 +1461,8 @@ int main(int argc, char* argv[])
                     char errorOpening = serial.openDevice(Serialports[port_id].c_str(), 115200);
                     // If connection fails, return the error code otherwise, display a success message
                     if (errorOpening!=1) std::cerr << "Error: " << errorOpening << "\n";
+                    serial.RTS(false);
+                    serial.DTR(false);
                 }else{
                     serial.closeDevice();
                 }
@@ -1497,6 +1501,8 @@ int main(int argc, char* argv[])
                             char errorOpening = serial.openDevice(Serialports[port_id].c_str(), 115200);
                             // If connection fails, return the error code otherwise, display a success message
                             if (errorOpening!=1) std::cerr << "Error: " << errorOpening << "\n";
+                            serial.RTS(false);
+                            serial.DTR(false);
                         }
                     }
 
@@ -1577,12 +1583,40 @@ int main(int argc, char* argv[])
     glfwTerminate();
     if(running){
         running = false;
+        
         adc.stopStream();
         squeue.get()->close();
+        
         thd.join();
+
+        basebandQueue.get()->close();
+        if(!doBasebandCout){
+            dac.stopStream();
+        }
+
+        if(rig_enabled){
+            switch (ptt_id)
+            {
+            case 0:
+                serial.DTR(false);
+                break;
+            case 1:
+                serial.RTS(false);
+                serial.DTR(false);
+                break;
+            }
+        }
+        
+        if(has_ptt){
+            std::cerr << "\r\nPTT: OFF \n";          
+            system(ptt_off.c_str());
+        }
     }
 
     adc.closeStream();
+    if(!doBasebandCout){
+        dac.closeStream();
+    }
 
     return EXIT_SUCCESS;
 }
