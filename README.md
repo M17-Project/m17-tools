@@ -1,6 +1,11 @@
 # m17-tools
 A set of M17 tools based on [original m17-cxx-demod toolset](https://github.com/mobilinkd/m17-cxx-demod) by Rob Riggs, WX9O.
 
+## m17-demod-gui
+A screenshot of `m17-demod-gui` running on Windows:
+
+![obraz](https://user-images.githubusercontent.com/44336093/212475254-07605e95-427c-4a94-aff5-911f41005a0e.png)
+
 ## m17-demod
 This program reads a 48k samples per second 16-bit, little-endian, single
 channel, M17 4FSK baseband stream from STDIN and writes a demodulated/decoded
