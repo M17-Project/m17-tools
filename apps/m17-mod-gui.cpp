@@ -126,6 +126,8 @@
                 }
             }
         }
+    }else{
+        std::cerr << "/proc/tty/drivers: No such file or directory\n";
     }
     return ports;
     }
@@ -1221,8 +1223,16 @@ int main(int argc, char* argv[])
     std::thread thd;
 
     serialib serial;
+    bool hasSerial = false;
     std::vector<std::string> Serialports = get_available_ports(serial);
     int port_id = 0;
+
+    if(Serialports.size() == 0){
+        std::cerr << "No serial ports found.\n";
+        Serialports.push_back("NONE");
+    }else{
+        hasSerial = true;
+    }
 
     std::vector<int> Serialbaud = {115200};
     int baud_id = 0;
@@ -1305,7 +1315,7 @@ int main(int argc, char* argv[])
                             system(ptt_on.c_str());
                         }
 
-                        if(rig_enabled){
+                        if(rig_enabled && hasSerial){
                             switch (ptt_id)
                             {
                             case 0:
@@ -1342,9 +1352,10 @@ int main(int argc, char* argv[])
                         basebandQueue.get()->close();
                         if(!doBasebandCout){
                             dac.stopStream();
-                        }
+                        }                        
 
-                        if(rig_enabled){
+                        if(rig_enabled && hasSerial){
+                            std::this_thread::sleep_for(std::chrono::milliseconds(40)); // Ptt delay
                             switch (ptt_id)
                             {
                             case 0:
@@ -1457,15 +1468,17 @@ int main(int argc, char* argv[])
         {
             ImGui::Begin("Rig Control");
             if(ImGui::Checkbox("Enable", &rig_enabled)){
-                if(rig_enabled){
-                    std::cerr << "Trying to open: " << Serialports[port_id] << "\n";
-                    char errorOpening = serial.openDevice(Serialports[port_id].c_str(), 115200);
-                    // If connection fails, return the error code otherwise, display a success message
-                    if (errorOpening!=1) std::cerr << "Error: " << errorOpening << "\n";
-                    serial.RTS(false);
-                    serial.DTR(false);
-                }else{
-                    serial.closeDevice();
+                if(hasSerial){
+                    if(rig_enabled){
+                        std::cerr << "Trying to open: " << Serialports[port_id] << "\n";
+                        char errorOpening = serial.openDevice(Serialports[port_id].c_str(), 115200);
+                        // If connection fails, return the error code otherwise, display a success message
+                        if (errorOpening!=1) std::cerr << "Error: " << errorOpening << "\n";
+                        serial.RTS(false);
+                        serial.DTR(false);
+                    }else{
+                        serial.closeDevice();
+                    }
                 }
             }
             ImGui::Text("Serial Port:");
@@ -1491,12 +1504,12 @@ int main(int argc, char* argv[])
                                 dac.stopStream();
                             }
 
-                            if(rig_enabled){
+                            if(rig_enabled && hasSerial){
                                 serial.closeDevice();
                             }
                         }
 
-                        if(rig_enabled){
+                        if(rig_enabled && hasSerial){
                             serial.closeDevice();
                             std::cerr << "Trying to open: " << Serialports[port_id] << "\n";
                             char errorOpening = serial.openDevice(Serialports[port_id].c_str(), 115200);
