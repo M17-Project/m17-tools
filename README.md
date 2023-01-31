@@ -32,11 +32,11 @@ It translates M17 baseband to the M17-over-IP traffic (reflector traffic).
 
 ### Prerequisites
 
-This code requires the codec2-devel, boost-devel, gtest-devel, libgl-dev, libasound2-dev, and xorg-dev packages be installed.
+This code requires the codec2-devel, boost-devel, gtest-devel [and libgl-dev, libasound2-dev, and xorg-dev for the gui app] packages be installed.
 
 It also requires a modern C++17 compiler (GCC 8 minimum).
 
-### Build steps
+### Build steps - All apps
     sudo apt-get install libgl-dev xorg-dev libasound2-dev 
     cd m17-tools
     cd thirdparty/rtaudio
@@ -51,6 +51,15 @@ It also requires a modern C++17 compiler (GCC 8 minimum).
     mkdir build
     cd build
     cmake ..
+    make
+    make test
+    sudo make install
+	
+### Build steps - Command line apps only.
+    cd m17-tools
+    mkdir build
+    cd build
+    cmake .. -DBUILD_GUI_APPS=OFF
     make
     make test
     sudo make install
