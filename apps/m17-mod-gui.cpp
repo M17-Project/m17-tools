@@ -1379,7 +1379,7 @@ int main(int argc, char* argv[])
             ImGui::PopStyleColor(2);
             ImGui::PopStyleVar(1);
 
-            ImGui::Text("PTT = %s", ptt[tx]);
+            ImGui::Text("PTT = %s", ptt[tx].c_str());
             ImGui::End();
 
         }
