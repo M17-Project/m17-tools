@@ -82,7 +82,7 @@ struct Config
 
     bool bert = false; // Bit error rate testing.
     bool invert = false;
-    int can = 10;
+    int can = 0;
 	
 	bool encrypt = false; //Default is no Encryption
 	std::string CKEY; //AES Key
@@ -228,7 +228,7 @@ enum class OutputType {SYM, BIN, RRC};
 OutputType outputType = OutputType::RRC;
 bool invert = false;
 bool enc_key = false;
-int8_t can = 10;
+int8_t can = 0;
 
 std::random_device dev;
 std::mt19937 rng(dev());

@@ -72,7 +72,7 @@ struct Config
     bool bitstream = false; // default is baseband audio
     bool bert = false; // Bit error rate testing.
     bool invert = false;
-    int can = 10;
+    int can = 0;
     std::string addr;
     unsigned short port;
 
@@ -177,7 +177,7 @@ std::atomic<bool> running{false};
 bool bitstream = false;
 bool invert = false;
 bool mdebug = false;
-int8_t can = 10;
+int8_t can = 0;
 
 int8_t bits_to_symbol(uint8_t bits)
 {
@@ -319,6 +319,11 @@ void output_eot()
         }
         auto baseband = symbols_to_baseband(out_symbols);
         for (auto b : baseband) std::cout << uint8_t(b & 0xFF) << uint8_t(b >> 8);
+
+        std::array<int8_t, 192> flush_symbols;
+		flush_symbols.fill(0);
+		auto f_baseband = symbols_to_baseband(flush_symbols);
+        for (auto b : f_baseband) std::cout << uint8_t(b & 0xFF) << uint8_t(b >> 8);
     }
 }
 

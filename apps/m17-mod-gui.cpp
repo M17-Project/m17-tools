@@ -1288,7 +1288,7 @@ int main(int argc, char* argv[])
             if (btn){
                 config->source_address = std::string(str1);
                 config->destination_address = std::string(str2);
-                if(config->source_address.length()>4){
+                if(config->source_address.length()>3){
                     if(!running){
                         invert = config->invert;
                         can = config->can;
