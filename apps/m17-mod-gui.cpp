@@ -1263,8 +1263,8 @@ int main(int argc, char* argv[])
 
         {
             ImGui::Begin("M17 Modulator");
-            ImGui::InputTextWithHint("SRC", "SRC CALLSIGN", str1, 7, ImGuiInputTextFlags_CharsUppercase);
-            ImGui::InputTextWithHint("DST", "DST CALLSIGN", str2, 7, ImGuiInputTextFlags_CharsUppercase);
+            ImGui::InputTextWithHint("SRC", "SRC CALLSIGN", str1, 8, ImGuiInputTextFlags_CharsUppercase);
+            ImGui::InputTextWithHint("DST", "DST CALLSIGN", str2, 8, ImGuiInputTextFlags_CharsUppercase);
             ImGui::InputInt("CAN", &config->can);
 	        config->can = std::min<int>(15,std::max<int>(0,config->can));
             ImGui::Checkbox("Invert", &config->invert);
@@ -1288,7 +1288,7 @@ int main(int argc, char* argv[])
             if (btn){
                 config->source_address = std::string(str1);
                 config->destination_address = std::string(str2);
-                if(config->source_address.length()>3){
+                if(config->source_address.length()>2){
                     if(!running){
                         invert = config->invert;
                         can = config->can;
