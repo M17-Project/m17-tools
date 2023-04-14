@@ -1267,7 +1267,7 @@ int main(int argc, char* argv[])
             ImGui::InputTextWithHint("DST", "DST CALLSIGN", str2, 8, ImGuiInputTextFlags_CharsUppercase);
             ImGui::InputInt("CAN", &config->can);
 	        config->can = std::min<int>(15,std::max<int>(0,config->can));
-            ImGui::Checkbox("Invert", &config->invert);
+            ImGui::Checkbox("Invert Polarity", &config->invert);
             ImGui::Checkbox("Encrypt", &config->encrypt);
             ImGui::InputText("AES Key", buf, 128, ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
 
