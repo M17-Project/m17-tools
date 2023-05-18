@@ -1383,6 +1383,7 @@ void drawTestDock()
 
 		
 		ImGui::DockBuilderDockWindow("M17 Modulator", dock_main_id);
+        ImGui::DockBuilderDockWindow("M17 Demodulator", dock_main_id);
 		ImGui::DockBuilderDockWindow("Audio", dock_id_bottom);
         ImGui::DockBuilderDockWindow("Rig Control", dock_id_bottom);
 		ImGui::DockBuilderFinish(dockspace_id);
