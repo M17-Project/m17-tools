@@ -379,11 +379,12 @@ bool dump_lsf(std::array<T, N> const& lsf)
     return true;
 }
 
+std::atomic<float> spk_gain{1.0f};
 
 void AudioOutput(std::array<int16_t, 160> buf){
     if(!doBasebandCout){
         for (int i=0; i<buf.size(); i++){
-            int16_t b = buf[i];
+            int16_t b = (int16_t)(buf[i] * spk_gain);
             if(squeue->is_open()){
                 if(!squeue->put(b, std::chrono::milliseconds(3000))){
                     std::cerr<<"AudioOutput(): ERROR OUTPUT QUEUE\n";
@@ -1242,6 +1243,9 @@ void send_audio_frame(const lich_segment_t& lich, const data_frame_t& data)
     output_frame(STREAM_SYNC_WORD, temp);
 }
 
+std::atomic<float>tx_mic_gain{1.0f};
+std::atomic<float> rx_gain{1.0f};
+
 void transmit(std::shared_ptr<queue_t>& queue, const lsf_t& lsf)
 {
     using namespace mobilinkd;
@@ -1272,7 +1276,7 @@ void transmit(std::shared_ptr<queue_t>& queue, const lsf_t& lsf)
     {
         int16_t sample;
         if (!queue->get(sample, std::chrono::milliseconds(3000))) break;
-        audio[index++] = sample;
+        audio[index++] = (int16_t)(sample*tx_mic_gain);
         if (index == audio.size())
         {
             index = 0;
@@ -1400,8 +1404,6 @@ static void glfw_error_callback(int error, const char* description)
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
 }
 
-std::atomic<float> rx_gain{1.0f};
-
 void func(std::shared_ptr<queue_t>& queue){
     std::cout << "Hi I'm Thready McThreadFace\n";
     while(!queue->is_closed() && queue->empty()){
@@ -1508,7 +1510,7 @@ int main(int argc, char* argv[])
 #endif
 
     // Create window with graphics context
-    GLFWwindow* window = glfwCreateWindow(300, 500, "M17-RTX Gui", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(300, 600, "M17-RTX Gui", NULL, NULL);
     if (window == NULL)
         return 1;
     glfwMakeContextCurrent(window);
@@ -1570,14 +1572,20 @@ int main(int argc, char* argv[])
 
     std::string ptt[2] = {"OFF","ON"};
 
-    AudioSource AudioSrc0(48000u, 1920u, 0);
-    AudioSink AudioSink0(8000u, 320u, 0);
+    AudioSource BasebandSrc(48000u, 1920u, 0);
+    AudioSource VoiceSrc(8000u, 320u, 0);
 
-    AudioSrc0.SetCallback(&record);
-    AudioSink0.SetCallback(&playback);
+    AudioSink VoiceSink(8000u, 320u, 0);
+    AudioSink BasebandSink(48000u, 64u, 0);
 
-    AudioSrc0.Open();
-    AudioSink0.Open();
+    BasebandSrc.SetCallback(&record);
+    VoiceSrc.SetCallback(&record);
+
+    BasebandSink.SetCallback(&playback);
+    VoiceSink.SetCallback(&playback);
+
+    BasebandSrc.Open();
+    VoiceSink.Open();
 
     std::thread thd;
 
@@ -1646,6 +1654,14 @@ int main(int argc, char* argv[])
 
             auto btn = ImGui::Button("PTT",button_sz);
 
+            ImGui::PopStyleColor(2);
+            ImGui::PopStyleVar(1);
+
+            ImGui::Text("Mic Gain:");
+            float micG = tx_mic_gain;
+            ImGui::SliderFloat("##mic_gain", &micG, 0.0f, 1.0f, "%.1f");
+            tx_mic_gain = micG;
+
             if (btn || (StopRx && !rx) ){
                 config->source_address = std::string(str1);
                 config->destination_address = std::string(str2);
@@ -1669,14 +1685,8 @@ int main(int argc, char* argv[])
                         squeue = std::make_shared<queue_t>();
                         basebandQueue = std::make_shared<queue_t>();
 
-                        AudioSrc0.SetSampleRate(8000u);
-                        AudioSink0.SetSampleRate(48000u);
-
-                        AudioSrc0.SetNoFrames(320);
-                        AudioSink0.SetNoFrames(64);
-
-                        AudioSrc0.Start();
-                        AudioSink0.Start();
+                        VoiceSrc.Start();
+                        BasebandSink.Start();
 
                         if(has_ptt){
                             std::cerr << "\r\nPTT: ON \n";          
@@ -1714,13 +1724,13 @@ int main(int argc, char* argv[])
                     }else{
                         running = false;
 
-                        AudioSrc0.Stop();
+                        VoiceSrc.Stop();
                         basebandQueue.get()->close();
                         
                         thd.join(); 
 
                         squeue.get()->close();
-                        AudioSink0.Stop();              
+                        BasebandSink.Stop();              
 
                         if(rig_enabled && hasSerial){
                             std::this_thread::sleep_for(std::chrono::milliseconds(40)); // Ptt delay
@@ -1745,8 +1755,6 @@ int main(int argc, char* argv[])
                     }
                 }
             }
-            ImGui::PopStyleColor(2);
-            ImGui::PopStyleVar(1);
         }
 
 
@@ -1788,6 +1796,19 @@ int main(int argc, char* argv[])
 
             auto btn = ImGui::Button("START",button_sz);
 
+            ImGui::PopStyleColor(2);
+            ImGui::PopStyleVar(1);
+
+            ImGui::Text("Rx Gain:");
+            float rxG = rx_gain;
+            ImGui::SliderFloat("##rx_gain", &rxG, 0.0f, 1.0f, "%.1f");
+            rx_gain = rxG;
+
+            ImGui::Text("Speaker Gain:");
+            float spkG = spk_gain;
+            ImGui::SliderFloat("##spk_gain", &spkG, 0.0f, 1.0f, "%.1f");
+            spk_gain = spkG;
+
             if (btn || StartRx || StopRx){
                 if(1){
                     ResetDiag(diag.get());
@@ -1802,14 +1823,8 @@ int main(int argc, char* argv[])
                         squeue = std::make_shared<queue_t>();
                         basebandQueue = std::make_shared<queue_t>();
 
-                        AudioSrc0.SetSampleRate(48000u);
-                        AudioSink0.SetSampleRate(8000u);
-
-                        AudioSrc0.SetNoFrames(1920);
-                        AudioSink0.SetNoFrames(320);
-
-                        AudioSrc0.Start();
-                        AudioSink0.Start();
+                        BasebandSrc.Start();
+                        VoiceSink.Start();
 
                         if(rig_enabled && hasSerial){
                             std::this_thread::sleep_for(std::chrono::milliseconds(40)); // Ptt delay
@@ -1841,45 +1856,44 @@ int main(int argc, char* argv[])
                     }else{
                         running = false;
                         
-                        AudioSrc0.Stop();
+                        BasebandSrc.Stop();
                         basebandQueue.get()->close();
                         
                         thd.join(); 
 
                         squeue.get()->close();
-                        AudioSink0.Stop();          
+                        VoiceSink.Stop();          
                         rx = false;
                     }
                 }
             }
-            ImGui::PopStyleColor(2);
-            ImGui::PopStyleVar(1);
-
             ImGui::End();
         }
 
         {
             ImGui::Begin("Audio");
-            ImGui::Text("Input Device:");
+            ImGui::Text("Input Device [MIC]:");
             float menuWidth = ImGui::GetContentRegionAvail().x;
             ImGui::SetNextItemWidth(menuWidth);
-            if (ImGui::BeginCombo("input_audio",AudioSrc0.GetCurrentDeviceNameC())) {
-                for (int i = 0; i < AudioSrc0.GetNumDevices(); ++i) {
-                    const bool isSelected = (AudioSrc0.GetCurrentDeviceId() == i);
-                    if (ImGui::Selectable(AudioSrc0.GetDeviceNameC(i), isSelected)) {
+            if (ImGui::BeginCombo("input_audio_0",VoiceSrc.GetCurrentDeviceNameC())) {
+                for (int i = 0; i < VoiceSrc.GetNumDevices(); ++i) {
+                    const bool isSelected = (VoiceSrc.GetCurrentDeviceId() == i);
+                    if (ImGui::Selectable(VoiceSrc.GetDeviceNameC(i), isSelected)) {
                         if(running){
                             rx = false;
                             running = false;
 
-                            AudioSrc0.Stop();
+                            BasebandSrc.Stop();
+                            VoiceSrc.Stop();
                             basebandQueue.get()->close();
                             
                             thd.join(); 
 
                             squeue.get()->close();
-                            AudioSink0.Stop();
+                            BasebandSink.Stop();
+                            VoiceSink.Stop();
                         }
-                        AudioSrc0.ChangeDevice(i);
+                        VoiceSrc.ChangeDevice(i);
                     }
 
                     // Set the initial focus when opening the combo
@@ -1890,26 +1904,29 @@ int main(int argc, char* argv[])
                 }
                 ImGui::EndCombo();
             }
-            ImGui::Text("Output Device:");
+
+            ImGui::Text("Input Device [RX]:");
+            menuWidth = ImGui::GetContentRegionAvail().x;
             ImGui::SetNextItemWidth(menuWidth);
-            if (ImGui::BeginCombo("output_audio",AudioSink0.GetCurrentDeviceNameC())) {
-                for (int i = 0; i < AudioSink0.GetNumDevices(); ++i) {
-                    const bool isSelected = (AudioSink0.GetCurrentDeviceId() == i);
-                    if (ImGui::Selectable(AudioSink0.GetDeviceNameC(i), isSelected)) {
-                        std::cerr <<"OUT[" << i << "]\n";
+            if (ImGui::BeginCombo("input_audio_1",BasebandSrc.GetCurrentDeviceNameC())) {
+                for (int i = 0; i < BasebandSrc.GetNumDevices(); ++i) {
+                    const bool isSelected = (BasebandSrc.GetCurrentDeviceId() == i);
+                    if (ImGui::Selectable(BasebandSrc.GetDeviceNameC(i), isSelected)) {
                         if(running){
                             rx = false;
                             running = false;
-                            
-                            AudioSrc0.Stop();
+
+                            BasebandSrc.Stop();
+                            VoiceSrc.Stop();
                             basebandQueue.get()->close();
                             
                             thd.join(); 
 
                             squeue.get()->close();
-                            AudioSink0.Stop();
+                            BasebandSink.Stop();
+                            VoiceSink.Stop();
                         }
-                        AudioSink0.ChangeDevice(i);
+                        BasebandSrc.ChangeDevice(i);
                     }
 
                     // Set the initial focus when opening the combo
@@ -1920,6 +1937,73 @@ int main(int argc, char* argv[])
                 }
                 ImGui::EndCombo();
             }
+
+            ImGui::Text("Output Device [SPK]:");
+            menuWidth = ImGui::GetContentRegionAvail().x;
+            ImGui::SetNextItemWidth(menuWidth);
+            if (ImGui::BeginCombo("output_audio_0",VoiceSink.GetCurrentDeviceNameC())) {
+                for (int i = 0; i < VoiceSink.GetNumDevices(); ++i) {
+                    const bool isSelected = (VoiceSink.GetCurrentDeviceId() == i);
+                    if (ImGui::Selectable(VoiceSink.GetDeviceNameC(i), isSelected)) {
+                        if(running){
+                            rx = false;
+                            running = false;
+
+                            BasebandSrc.Stop();
+                            VoiceSrc.Stop();
+                            basebandQueue.get()->close();
+                            
+                            thd.join(); 
+
+                            squeue.get()->close();
+                            BasebandSink.Stop();
+                            VoiceSink.Stop();
+                        }
+                        VoiceSink.ChangeDevice(i);
+                    }
+
+                    // Set the initial focus when opening the combo
+                    // (scrolling + keyboard navigation focus)
+                    if (isSelected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+
+            ImGui::Text("Output Device [TX]:");
+            menuWidth = ImGui::GetContentRegionAvail().x;
+            ImGui::SetNextItemWidth(menuWidth);
+            if (ImGui::BeginCombo("output_audio_1",BasebandSink.GetCurrentDeviceNameC())) {
+                for (int i = 0; i < BasebandSink.GetNumDevices(); ++i) {
+                    const bool isSelected = (BasebandSink.GetCurrentDeviceId() == i);
+                    if (ImGui::Selectable(BasebandSink.GetDeviceNameC(i), isSelected)) {
+                        if(running){
+                            rx = false;
+                            running = false;
+
+                            BasebandSrc.Stop();
+                            VoiceSrc.Stop();
+                            basebandQueue.get()->close();
+                            
+                            thd.join(); 
+
+                            squeue.get()->close();
+                            BasebandSink.Stop();
+                            VoiceSink.Stop();
+                        }
+                        BasebandSink.ChangeDevice(i);
+                    }
+
+                    // Set the initial focus when opening the combo
+                    // (scrolling + keyboard navigation focus)
+                    if (isSelected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+
             ImGui::End();
         }
 
@@ -1952,13 +2036,15 @@ int main(int argc, char* argv[])
                             rx = false;
                             running = false;
                             
-                            AudioSrc0.Stop();
+                            BasebandSrc.Stop();
+                            VoiceSrc.Stop();
                             basebandQueue.get()->close();
                             
                             thd.join(); 
 
                             squeue.get()->close();
-                            AudioSink0.Stop();
+                            BasebandSink.Stop();
+                            VoiceSink.Stop();
 
                             if(rig_enabled && hasSerial){
                                 serial.closeDevice();
@@ -2054,13 +2140,15 @@ int main(int argc, char* argv[])
     if(running){
         running = false;
         
-        AudioSrc0.Stop();
+        BasebandSrc.Stop();
+        VoiceSrc.Stop();
         basebandQueue.get()->close();
         
         thd.join(); 
 
         squeue.get()->close();
-        AudioSink0.Stop();
+        BasebandSink.Stop();
+        VoiceSink.Stop();
 
         if(rig_enabled){
             switch (ptt_id)

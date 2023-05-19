@@ -3,6 +3,7 @@
 class AudioSink
 {
 protected:
+    bool isOpen;
     RtAudio dev;
     std::vector< unsigned int > ids;
     std::vector<std::string> device_names;
@@ -36,6 +37,7 @@ public:
 class AudioSource
 {
 protected:
+    bool isOpen;
     RtAudio dev;
     std::vector< unsigned int > ids;
     std::vector<std::string> device_names;

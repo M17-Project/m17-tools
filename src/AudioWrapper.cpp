@@ -24,6 +24,9 @@ const char* AudioSink::GetDeviceNameC(int DeviceId){
 }
 
 void AudioSink::Start(){
+    if(!isOpen){
+        Open();
+    }
     std::cerr << "Starting AudioSink\n";
     dev.startStream();
 }
@@ -38,13 +41,16 @@ void AudioSink::SetCallback(int (*Callback)(void *outputBuffer, void *inputBuffe
 }
 
 void AudioSink::Open(){
+    isOpen=true;
     std::cerr << "Opening AudioSink\n";
     dev.openStream( &parameters,  NULL, RTAUDIO_SINT16, sampleRate, &bufferFrames, callback_fn);
 }
 
 void AudioSink::Close(){
-    std::cerr << "Closing AudioSink\n";
-    dev.closeStream();
+    if(isOpen){
+        std::cerr << "Closing AudioSink\n";
+        dev.closeStream();
+    }
 }
 
 int AudioSink::GetCurrentDeviceId(){
@@ -90,6 +96,7 @@ AudioSink::AudioSink(unsigned int SampleRate, unsigned int nBuffers, int Default
     parameters.deviceId = device_ids[dev_id];
     parameters.nChannels = 2;
     parameters.firstChannel = 0;
+    isOpen=false;
 }
 AudioSink::~AudioSink()
 {
@@ -120,6 +127,9 @@ const char* AudioSource::GetDeviceNameC(int DeviceId){
 }
 
 void AudioSource::Start(){
+    if(!isOpen){
+        Open();
+    }
     std::cerr << "Starting AudioSource\n";
     dev.startStream();
 }
@@ -134,13 +144,16 @@ void AudioSource::SetCallback(int (*Callback)(void *outputBuffer, void *inputBuf
 }
 
 void AudioSource::Open(){
+    isOpen=true;
     std::cerr << "Opening AudioSource\n";
     dev.openStream(NULL, &parameters, RTAUDIO_SINT16, sampleRate, &bufferFrames, callback_fn);
 }
 
 void AudioSource::Close(){
-    std::cerr << "Closing AudioSource\n";
-    dev.closeStream();
+    if(isOpen){
+        std::cerr << "Closing AudioSource\n";
+        dev.closeStream();
+    }
 }
 
 int AudioSource::GetCurrentDeviceId(){
@@ -185,6 +198,7 @@ AudioSource::AudioSource(unsigned int SampleRate, unsigned int nBuffers, int Def
     parameters.deviceId = device_ids[dev_id];
     parameters.nChannels = 1;
     parameters.firstChannel = 0;
+    isOpen=false;
 }
 AudioSource::~AudioSource()
 {
