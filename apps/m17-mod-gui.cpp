@@ -1400,6 +1400,7 @@ static void glfw_error_callback(int error, const char* description)
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
 }
 
+std::atomic<float> rx_gain{1.0f};
 
 void func(std::shared_ptr<queue_t>& queue){
     std::cout << "Hi I'm Thready McThreadFace\n";
@@ -1411,7 +1412,7 @@ void func(std::shared_ptr<queue_t>& queue){
         int16_t sample;
         if (!queue->get(sample, std::chrono::milliseconds(3000))) break;
         if (invert_input) sample *= -1;
-        (*pdemod)(sample / 44000.0);
+        (*pdemod)(rx_gain * sample / 44000.0);
     }
 }
 
@@ -1599,6 +1600,8 @@ int main(int argc, char* argv[])
     int ptt_id = 1;
 
     bool rig_enabled = 0;
+    bool StartRx=false;
+    bool StopRx=false;
 
     // Main loop
     while (!glfwWindowShouldClose(window))
@@ -1643,10 +1646,13 @@ int main(int argc, char* argv[])
 
             auto btn = ImGui::Button("PTT",button_sz);
 
-            if (btn){
+            if (btn || (StopRx && !rx) ){
                 config->source_address = std::string(str1);
                 config->destination_address = std::string(str2);
                 if(config->source_address.length()>2){
+                    if(StopRx){
+                        StopRx=false;
+                    }
                     if(!running){
                         invert = config->invert;
                         can = config->can;
@@ -1703,6 +1709,8 @@ int main(int argc, char* argv[])
 
                         tx = true;
 
+                    }else if(rx){
+                        StopRx = true;
                     }else{
                         running = false;
 
@@ -1733,6 +1741,7 @@ int main(int argc, char* argv[])
                             system(ptt_off.c_str());
                         }
                         tx = false;
+                        StartRx=true;
                     }
                 }
             }
@@ -1779,10 +1788,10 @@ int main(int argc, char* argv[])
 
             auto btn = ImGui::Button("START",button_sz);
 
-            if (btn){
+            if (btn || StartRx || StopRx){
                 if(1){
                     ResetDiag(diag.get());
-                    if(!running){
+                    if(!running && !tx && !rx){
                         invert = config->invert;
                         enc_key = config->encrypt;
         
@@ -1828,7 +1837,7 @@ int main(int argc, char* argv[])
                         std::cerr << "m17-demod running. ctrl-D to break." << std::endl;
 
                         rx = true;
-
+                        StartRx=false;
                     }else{
                         running = false;
                         
