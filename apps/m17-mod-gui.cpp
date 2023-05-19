@@ -379,12 +379,27 @@ bool dump_lsf(std::array<T, N> const& lsf)
     return true;
 }
 
-std::atomic<float> spk_gain{1.0f};
+float *spk_gain;
+float *rx_gain;
+
+float *tx_mic_gain;
+float *tx_out_gain;
+
+int16_t ApplyGain(int16_t input, float* gain){
+    float ip = (float) input / (float) INT16_MAX;
+    ip *= (*gain);
+    int16_t val = std::min(std::max((int16_t)INT16_MIN,(int16_t)(ip*(INT16_MAX-1))),(int16_t)INT16_MAX);
+    return val;
+}
+
+float ApplyGainF(float input, float* gain){
+    return input * (*gain);
+}
 
 void AudioOutput(std::array<int16_t, 160> buf){
     if(!doBasebandCout){
         for (int i=0; i<buf.size(); i++){
-            int16_t b = (int16_t)(buf[i] * spk_gain);
+            int16_t b = ApplyGain(buf[i], spk_gain);
             if(squeue->is_open()){
                 if(!squeue->put(b, std::chrono::milliseconds(3000))){
                     std::cerr<<"AudioOutput(): ERROR OUTPUT QUEUE\n";
@@ -819,6 +834,7 @@ void output_baseband(std::array<uint8_t, 2> sync_word, const bitstream_t& frame)
     auto baseband = symbols_to_baseband(temp);
     for (auto b : baseband){
         if(!doBasebandCout && squeue->is_open()){
+            b = ApplyGain(b, tx_out_gain);
             if(!squeue->put(b, std::chrono::milliseconds(3000))){
                 std::cerr<<"output_baseband(): ERROR OUTPUT QUEUE\n";
             }
@@ -870,6 +886,7 @@ void send_preamble()
                 auto preamble_baseband = symbols_to_baseband(preamble_symbols);
                 for (auto b : preamble_baseband){
                     if(!doBasebandCout && squeue->is_open()){
+                        b = ApplyGain(b, tx_out_gain);
                         if(!squeue->put(b, std::chrono::milliseconds(3000))){
                             std::cerr<<"send_preamble(): ERROR OUTPUT QUEUE\n";
                         }
@@ -931,6 +948,7 @@ void output_eot()
                 auto baseband = symbols_to_baseband(out_symbols);
                 for (auto b : baseband){
                     if(!doBasebandCout && squeue->is_open()){
+                        b = ApplyGain(b, tx_out_gain);
                         if(!squeue->put(b, std::chrono::seconds(300))){
                             std::cerr<<"send_eot(): ERROR OUTPUT QUEUE\n";
                         }
@@ -1243,9 +1261,6 @@ void send_audio_frame(const lich_segment_t& lich, const data_frame_t& data)
     output_frame(STREAM_SYNC_WORD, temp);
 }
 
-std::atomic<float>tx_mic_gain{1.0f};
-std::atomic<float> rx_gain{1.0f};
-
 void transmit(std::shared_ptr<queue_t>& queue, const lsf_t& lsf)
 {
     using namespace mobilinkd;
@@ -1276,7 +1291,7 @@ void transmit(std::shared_ptr<queue_t>& queue, const lsf_t& lsf)
     {
         int16_t sample;
         if (!queue->get(sample, std::chrono::milliseconds(3000))) break;
-        audio[index++] = (int16_t)(sample*tx_mic_gain);
+        audio[index++] = ApplyGain(sample, tx_mic_gain);
         if (index == audio.size())
         {
             index = 0;
@@ -1388,8 +1403,9 @@ void drawTestDock()
 		
 		ImGui::DockBuilderDockWindow("M17 Modulator", dock_main_id);
         ImGui::DockBuilderDockWindow("M17 Demodulator", dock_main_id);
-		ImGui::DockBuilderDockWindow("Audio", dock_id_bottom);
         ImGui::DockBuilderDockWindow("Rig Control", dock_id_bottom);
+        ImGui::DockBuilderDockWindow("Audio", dock_id_bottom);
+        ImGui::DockBuilderDockWindow("Gains", dock_id_bottom);
 		ImGui::DockBuilderFinish(dockspace_id);
 	}
     
@@ -1414,33 +1430,45 @@ void func(std::shared_ptr<queue_t>& queue){
         int16_t sample;
         if (!queue->get(sample, std::chrono::milliseconds(3000))) break;
         if (invert_input) sample *= -1;
-        (*pdemod)(rx_gain * sample / 44000.0);
+        float s = sample / 44000.0f;
+        s = ApplyGainF(s,rx_gain);
+        (*pdemod)(s);
     }
 }
 
-float remap(float value, float low1, float high1, float low2, float high2){
-    return low2 + (value - low1) * (high2 - low2) / (high1 - low1);
+void SaveDevices(const std::string& filename, const std::vector<uint32_t>& numbers) {
+    std::ofstream outputFile(filename, std::ios::binary);
+    if (!outputFile) {
+        std::cerr << "Failed to open file for writing: " << filename << std::endl;
+        return;
+    }
+
+    for (const uint32_t number : numbers) {
+        outputFile.write(reinterpret_cast<const char*>(&number), sizeof(uint32_t));
+    }
+
+    outputFile.close();
+}
+
+// Function to read integers from a file
+bool readDevices(const std::string& filename, std::vector<uint32_t>& numbers) {
+    std::ifstream inputFile(filename, std::ios::binary);
+    if (!inputFile) {
+        return false;
+    }
+
+    uint32_t number;
+    while (inputFile.read(reinterpret_cast<char*>(&number), sizeof(uint32_t))) {
+        numbers.push_back(number);
+    }
+
+    inputFile.close();
+    return true;
 }
 
 int main(int argc, char* argv[])
 {
     using namespace mobilinkd;
-	
-#ifdef WIN32
-	// Set "stdin" to have binary mode:
-   auto result = _setmode( _fileno( stdin ), _O_BINARY );
-   if( result == -1 )
-      perror( "Cannot set mode" );
-   else
-      std::cerr << "'stdin' successfully changed to binary mode\n";
-  
-  // Set "stdout" to have binary mode:
-  result = _setmode( _fileno( stdout ), _O_BINARY );
-   if( result == -1 )
-      perror( "Cannot set mode" );
-   else
-      std::cerr << "'stdout' successfully changed to binary mode\n";
-#endif
 
     auto config = Config::parse(argc, argv);
     if (!config) return 0;
@@ -1572,11 +1600,32 @@ int main(int argc, char* argv[])
 
     std::string ptt[2] = {"OFF","ON"};
 
-    AudioSource BasebandSrc(48000u, 1920u, 0);
-    AudioSource VoiceSrc(8000u, 320u, 0);
+    std::string fname("config.ini");
+    std::vector<uint32_t> devs;
+    std::vector<float> gains;
+    if(!readDevices(fname,devs)){
+        std::cerr << "No default cfg loaded.\n";
+        devs.push_back(0);
+        devs.push_back(0);
+        devs.push_back(0);
+        devs.push_back(0);
 
-    AudioSink VoiceSink(8000u, 320u, 0);
-    AudioSink BasebandSink(48000u, 64u, 0);
+        gains.push_back(1.0f);
+        gains.push_back(1.0f);
+        gains.push_back(1.0f);
+        gains.push_back(1.0f);
+    }else{
+        gains.push_back(reinterpret_cast<float&>(devs[4]));
+        gains.push_back(reinterpret_cast<float&>(devs[5]));
+        gains.push_back(reinterpret_cast<float&>(devs[6]));
+        gains.push_back(reinterpret_cast<float&>(devs[7]));
+    }
+
+    AudioSource BasebandSrc(48000u, 1920u, devs[0]);
+    AudioSource VoiceSrc(8000u, 320u, devs[1]);
+
+    AudioSink VoiceSink(8000u, 320u, devs[2]);
+    AudioSink BasebandSink(48000u, 64u, devs[3]);
 
     BasebandSrc.SetCallback(&record);
     VoiceSrc.SetCallback(&record);
@@ -1610,6 +1659,17 @@ int main(int argc, char* argv[])
     bool rig_enabled = 0;
     bool StartRx=false;
     bool StopRx=false;
+
+    float g0 = gains[0];
+    float g1 = gains[1];
+    float g2 = gains[2];
+    float g3 = gains[3];
+
+    tx_out_gain = &g3;
+    tx_mic_gain = &g0;
+    rx_gain = &g1;
+    spk_gain = &g2;
+
 
     // Main loop
     while (!glfwWindowShouldClose(window))
@@ -1655,12 +1715,7 @@ int main(int argc, char* argv[])
             auto btn = ImGui::Button("PTT",button_sz);
 
             ImGui::PopStyleColor(2);
-            ImGui::PopStyleVar(1);
-
-            ImGui::Text("Mic Gain:");
-            float micG = tx_mic_gain;
-            ImGui::SliderFloat("##mic_gain", &micG, 0.0f, 1.0f, "%.1f");
-            tx_mic_gain = micG;
+            ImGui::PopStyleVar(1);           
 
             if (btn || (StopRx && !rx) ){
                 config->source_address = std::string(str1);
@@ -1757,6 +1812,21 @@ int main(int argc, char* argv[])
             }
         }
 
+        {
+            ImGui::Begin("Gains");
+            ImGui::Text("Mic Gain:");
+            ImGui::SliderFloat("##mic_gain", tx_mic_gain, 0.0f, 1.0f, "%.01f");
+
+            ImGui::Text("Rx Gain:");
+            ImGui::SliderFloat("##rx_gain", rx_gain, 0.0f, 1.5f, "%.01f");
+
+            ImGui::Text("Speaker Gain:");
+            ImGui::SliderFloat("##spk_gain", spk_gain, 0.0f, 1.0f, "%.01f");
+
+            ImGui::Text("Tx Gain:");
+            ImGui::SliderFloat("##tx_gain", tx_out_gain, 0.0f, 1.0f, "%.01f");
+            ImGui::End();
+        }
 
         {
             ImGui::Begin("M17 Demodulator");
@@ -1798,16 +1868,6 @@ int main(int argc, char* argv[])
 
             ImGui::PopStyleColor(2);
             ImGui::PopStyleVar(1);
-
-            ImGui::Text("Rx Gain:");
-            float rxG = rx_gain;
-            ImGui::SliderFloat("##rx_gain", &rxG, 0.0f, 1.0f, "%.1f");
-            rx_gain = rxG;
-
-            ImGui::Text("Speaker Gain:");
-            float spkG = spk_gain;
-            ImGui::SliderFloat("##spk_gain", &spkG, 0.0f, 1.0f, "%.1f");
-            spk_gain = spkG;
 
             if (btn || StartRx || StopRx){
                 if(1){
@@ -2168,6 +2228,19 @@ int main(int argc, char* argv[])
             system(ptt_off.c_str());
         }
     }
+
+    devs.clear();
+    devs.push_back(BasebandSrc.GetCurrentDeviceId());
+    devs.push_back(VoiceSrc.GetCurrentDeviceId());
+    devs.push_back(BasebandSink.GetCurrentDeviceId());
+    devs.push_back(VoiceSink.GetCurrentDeviceId());
+
+    devs.push_back(reinterpret_cast<uint32_t&>(g0));
+    devs.push_back(reinterpret_cast<uint32_t&>(g1));
+    devs.push_back(reinterpret_cast<uint32_t&>(g2));
+    devs.push_back(reinterpret_cast<uint32_t&>(g3));
+
+    SaveDevices("config.ini",devs);
 
     return EXIT_SUCCESS;
 }
