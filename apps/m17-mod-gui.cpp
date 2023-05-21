@@ -1594,8 +1594,10 @@ int main(int argc, char* argv[])
 
     bool rx = false;
     bool tx = false;
-    static char str1[7] = "";
-    static char str2[7] = "ALL";
+    bool rig_enabled = 0;
+
+    static char str1[8] = "";
+    static char str2[8] = "ALL";
     static char buf[128] = "";
 
     std::string ptt[2] = {"OFF","ON"};
@@ -1603,6 +1605,7 @@ int main(int argc, char* argv[])
     std::string fname("config.ini");
     std::vector<uint32_t> devs;
     std::vector<float> gains;
+    std::string callsign(str1);
     if(!readDevices(fname,devs)){
         std::cerr << "No default cfg loaded.\n";
         devs.push_back(0);
@@ -1614,11 +1617,18 @@ int main(int argc, char* argv[])
         gains.push_back(1.0f);
         gains.push_back(1.0f);
         gains.push_back(1.0f);
+
+        rig_enabled = false;
     }else{
         gains.push_back(reinterpret_cast<float&>(devs[4]));
         gains.push_back(reinterpret_cast<float&>(devs[5]));
         gains.push_back(reinterpret_cast<float&>(devs[6]));
         gains.push_back(reinterpret_cast<float&>(devs[7]));
+
+        rig_enabled = reinterpret_cast<bool&>(devs[8]);
+
+        std::copy(devs.begin()+9,devs.end(),std::back_inserter(callsign));
+        std::copy(callsign.begin(),callsign.end(),&str1[0]);
     }
 
     AudioSource BasebandSrc(48000u, 1920u, devs[0]);
@@ -1656,7 +1666,6 @@ int main(int argc, char* argv[])
     std::vector<std::string> Serialptt = {"DTR","RTS"};
     int ptt_id = 1;
 
-    bool rig_enabled = 0;
     bool StartRx=false;
     bool StopRx=false;
 
@@ -1721,6 +1730,7 @@ int main(int argc, char* argv[])
                 config->source_address = std::string(str1);
                 config->destination_address = std::string(str2);
                 if(config->source_address.length()>2){
+                    callsign = config->source_address;
                     if(StopRx){
                         StopRx=false;
                     }
@@ -2232,13 +2242,17 @@ int main(int argc, char* argv[])
     devs.clear();
     devs.push_back(BasebandSrc.GetCurrentDeviceId());
     devs.push_back(VoiceSrc.GetCurrentDeviceId());
-    devs.push_back(BasebandSink.GetCurrentDeviceId());
     devs.push_back(VoiceSink.GetCurrentDeviceId());
+    devs.push_back(BasebandSink.GetCurrentDeviceId());
 
     devs.push_back(reinterpret_cast<uint32_t&>(g0));
     devs.push_back(reinterpret_cast<uint32_t&>(g1));
     devs.push_back(reinterpret_cast<uint32_t&>(g2));
     devs.push_back(reinterpret_cast<uint32_t&>(g3));
+
+    devs.push_back(reinterpret_cast<uint32_t&>(rig_enabled));
+    
+    std::copy(callsign.begin(),callsign.end(),std::back_inserter(devs));
 
     SaveDevices("config.ini",devs);
 

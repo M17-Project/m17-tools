@@ -27,13 +27,13 @@ void AudioSink::Start(){
     if(!isOpen){
         Open();
     }
-    std::cerr << "Starting AudioSink\n";
     dev.startStream();
 }
 
 void AudioSink::Stop(){
-    std::cerr << "Stoping AudioSink\n";
-    dev.stopStream();
+    if(isOpen){
+        dev.stopStream();
+    }
 }
 
 void AudioSink::SetCallback(int (*Callback)(void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames, double streamTime, RtAudioStreamStatus status, void *userData)){
@@ -42,13 +42,11 @@ void AudioSink::SetCallback(int (*Callback)(void *outputBuffer, void *inputBuffe
 
 void AudioSink::Open(){
     isOpen=true;
-    std::cerr << "Opening AudioSink\n";
     dev.openStream( &parameters,  NULL, RTAUDIO_SINT16, sampleRate, &bufferFrames, callback_fn);
 }
 
 void AudioSink::Close(){
     if(isOpen){
-        std::cerr << "Closing AudioSink\n";
         dev.closeStream();
     }
 }
@@ -130,13 +128,13 @@ void AudioSource::Start(){
     if(!isOpen){
         Open();
     }
-    std::cerr << "Starting AudioSource\n";
     dev.startStream();
 }
 
 void AudioSource::Stop(){
-    std::cerr << "Stoping AudioSource\n";
-    dev.stopStream();
+    if(isOpen){
+        dev.stopStream();
+    }
 }
 
 void AudioSource::SetCallback(int (*Callback)(void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames, double streamTime, RtAudioStreamStatus status, void *userData)){
@@ -145,13 +143,11 @@ void AudioSource::SetCallback(int (*Callback)(void *outputBuffer, void *inputBuf
 
 void AudioSource::Open(){
     isOpen=true;
-    std::cerr << "Opening AudioSource\n";
     dev.openStream(NULL, &parameters, RTAUDIO_SINT16, sampleRate, &bufferFrames, callback_fn);
 }
 
 void AudioSource::Close(){
     if(isOpen){
-        std::cerr << "Closing AudioSource\n";
         dev.closeStream();
     }
 }
