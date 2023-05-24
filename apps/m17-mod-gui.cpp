@@ -140,6 +140,7 @@ bool display_lsf = false;
 bool invert_input = false;
 bool quiet = false;
 bool debug = false;
+bool debug_print = false;
 bool noise_blanker = false;
 
 //bool enc_key = false;
@@ -324,22 +325,26 @@ bool dump_lsf(std::array<T, N> const& lsf)
         coutMutex.lock();
         std::copy(lsf.begin() + 6, lsf.begin() + 12, encoded_call.begin());
         auto src = LinkSetupFrame::decode_callsign(encoded_call);
-        std::cerr << "\nSRC: ";
-        for (auto x : src) if (x) std::cerr << x;
+        if(debug_print){
+            std::cerr << "\nSRC: ";
+            for (auto x : src) if (x) std::cerr << x;
+        }
 
         std::copy(lsf.begin(), lsf.begin() + 6, encoded_call.begin());
         auto dest = LinkSetupFrame::decode_callsign(encoded_call);
-        std::cerr << ", DEST: ";
-        for (auto x : dest) if (x) std::cerr << x;
+        if(debug_print){
+            std::cerr << ", DEST: ";
+            for (auto x : dest) if (x) std::cerr << x;
+        
+            dump_type(type);
 
-        dump_type(type);
+            std::cerr << ", NONCE: ";
+            for (size_t i = 14; i != 28; ++i) std::cerr << std::hex << std::setw(2) << std::setfill('0') << int(lsf[i]);
 
-        std::cerr << ", NONCE: ";
-        for (size_t i = 14; i != 28; ++i) std::cerr << std::hex << std::setw(2) << std::setfill('0') << int(lsf[i]);
-
-        uint16_t crc = (lsf[28] << 8) | lsf[29];
-        std::cerr << ", CRC: " << std::hex << std::setw(4) << std::setfill('0') << crc;
-        std::cerr << std::dec << std::endl;
+            uint16_t crc = (lsf[28] << 8) | lsf[29];
+            std::cerr << ", CRC: " << std::hex << std::setw(4) << std::setfill('0') << crc;
+            std::cerr << std::dec << std::endl;
+        }
         diag->source = std::string(src.begin(),src.end());
         diag->dest = std::string(dest.begin(),dest.end());
         coutMutex.unlock();
@@ -583,7 +588,9 @@ bool handle_frame(mobilinkd::M17FrameDecoder::output_buffer_t const& frame, int 
             result = dump_lsf(frame.lsf);
             break;
         case FrameType::LICH:
-            std::cerr << "LICH" << std::endl;
+            if(debug_print){
+                std::cerr << "LICH" << std::endl;
+            }
             break;
         case FrameType::STREAM:
 			std::copy(frame.stream.begin(), frame.stream.begin()+2, last_FN);
@@ -609,14 +616,16 @@ void diagnostic_callback(bool dcd, FloatType evm, FloatType deviation, FloatType
 {
     if (debug) {
         coutMutex.lock();
-        std::cerr << "\rdcd: " << std::setw(1) << int(dcd)
-            << ", evm: " << std::setfill(' ') << std::setprecision(4) << std::setw(8) << evm * 100 <<"%"
-            << ", deviation: " << std::setprecision(4) << std::setw(8) << deviation
-            << ", freq offset: " << std::setprecision(4) << std::setw(8) << offset
-            << ", locked: " << std::boolalpha << std::setw(6) << locked << std::dec
-            << ", clock: " << std::setprecision(7) << std::setw(8) << clock
-            << ", sample: " << std::setw(1) << sample_index << ", "  << sync_index << ", " << clock_index
-            << ", cost: " << viterbi_cost;
+        if(debug_print){
+            std::cerr << "\rdcd: " << std::setw(1) << int(dcd)
+                << ", evm: " << std::setfill(' ') << std::setprecision(4) << std::setw(8) << evm * 100 <<"%"
+                << ", deviation: " << std::setprecision(4) << std::setw(8) << deviation
+                << ", freq offset: " << std::setprecision(4) << std::setw(8) << offset
+                << ", locked: " << std::boolalpha << std::setw(6) << locked << std::dec
+                << ", clock: " << std::setprecision(7) << std::setw(8) << clock
+                << ", sample: " << std::setw(1) << sample_index << ", "  << sync_index << ", " << clock_index
+                << ", cost: " << viterbi_cost;
+        }
         diag->dcd = dcd ? "ON" : "OFF";
         diag->lock = locked ? "LOCK" : "UNLOCKED";
         diag->dev = deviation;
@@ -674,6 +683,7 @@ struct Config
     int ser_id = 0;
     int baud_id = 0;
     int ptt_id = 1;
+    bool debug_print;
 
     static std::optional<Config> parse(int argc, char* argv[])
     {
@@ -737,28 +747,28 @@ struct Config
             return std::nullopt;
         }
 		
-		switch(result.CKEY.length()/2){
-			default:
-				result.encrypt = false;
-				std::cerr << "No encryption." << std::endl;
-				break;
-			case 16:
-				result.encrypt = true;
-				#define AES128 1
-				std::cerr << "AES 128 KEY." << std::endl;
-				break;
-			case 24:
-				result.encrypt = true;
-				#define AES192 1
-				std::cerr << "AES 192 KEY." << std::endl;
-				break;
-				
-			case 32:
-				result.encrypt = true;
-				#define AES256 1
-				std::cerr << "AES 256 KEY." << std::endl;
-				break;
-			}
+		//switch(result.CKEY.length()/2){
+		//	default:
+		//		result.encrypt = false;
+		//		std::cerr << "No encryption." << std::endl;
+		//		break;
+		//	case 16:
+		//		result.encrypt = true;
+		//		#define AES128 1
+		//		std::cerr << "AES 128 KEY." << std::endl;
+		//		break;
+		//	case 24:
+		//		result.encrypt = true;
+		//		#define AES192 1
+		//		std::cerr << "AES 192 KEY." << std::endl;
+		//		break;
+		//		
+		//	case 32:
+		//		result.encrypt = true;
+		//		#define AES256 1
+		//		std::cerr << "AES 256 KEY." << std::endl;
+		//		break;
+		//	}
 
         return result;
     }
@@ -1478,6 +1488,7 @@ void saveConfig(const std::string& filename, std::optional<Config>& config) {
         file << config->ser_id << std::endl;
         file << config->baud_id << std::endl;
         file << config->ptt_id << std::endl;
+        file << config->debug_print << std::endl;
 
         file.close();
     } else {
@@ -1524,6 +1535,7 @@ bool readConfig(const std::string& filename, std::optional<Config>& config) {
         file >>  config->ser_id;
         file >>  config->baud_id;
         file >>  config->ptt_id;
+        file >>  config->debug_print;
 
         file.close();
         return true;
@@ -1556,15 +1568,36 @@ int main(int argc, char* argv[])
     debug = config->debug;
     noise_blanker = config->noise_blanker;
 	enc_key = config->encrypt;
+    debug_print = config->debug_print;
 
     has_ptt = config->action_ptt;
 	ptt_on = config->tx_on_cmd;
 	ptt_off = config->tx_off_cmd;
 
     can = config->can;
-	
-	std::string hash = boost::algorithm::unhex(config->CKEY);
-	std::copy(hash.begin(), hash.end(), Key);
+	if(enc_key){
+        std::string hash = boost::algorithm::unhex(config->CKEY);
+        std::copy(hash.begin(), hash.end(), Key);
+        switch(config->CKEY.length()/2){
+			default:
+				std::cerr << "No encryption." << std::endl;
+				break;
+			case 16:
+				#define AES128 1
+				std::cerr << "AES 128 KEY." << std::endl;
+				break;
+			case 24:
+				#define AES192 1
+				std::cerr << "AES 192 KEY." << std::endl;
+				break;
+			case 32:
+				#define AES256 1
+				std::cerr << "AES 256 KEY." << std::endl;
+				break;
+		}
+    }else{
+        config->CKEY = std::string("");
+    }
 
     diag = std::make_unique<Diagnostics>();
 
@@ -1715,6 +1748,12 @@ int main(int argc, char* argv[])
     std::vector<std::string> Serialptt = {"DTR","RTS"};
     int ptt_id = config->ptt_id;
 
+    if(Serialports.size() < port_id+1){
+        rig_enabled = false;
+        port_id = 0;
+        std::cerr << "Serial port not found.\n";
+    }
+
     if(rig_enabled && hasSerial){
         std::cerr << "Trying to open: " << Serialports[port_id] << "\n";
         char errorOpening = serial.openDevice(Serialports[port_id].c_str(), 115200);
@@ -1730,6 +1769,7 @@ int main(int argc, char* argv[])
 
     bool StartRx=false;
     bool StopRx=false;
+    bool StopTx = false;
 
     float g0 = config->dev_Gains[0];
     float g1 = config->dev_Gains[1];
@@ -1788,7 +1828,7 @@ int main(int argc, char* argv[])
             ImGui::PopStyleColor(2);
             ImGui::PopStyleVar(1);           
 
-            if (btn || (StopRx && !rx) ){
+            if (btn || (StopRx && !rx) || StopTx){
                 config->source_address = std::string(str1);
                 config->destination_address = std::string(str2);
                 if(config->source_address.length()>2){
@@ -1848,6 +1888,7 @@ int main(int argc, char* argv[])
                     }else if(rx){
                         StopRx = true;
                     }else{
+                        StopTx = false;
                         running = false;
 
                         VoiceSrc.Stop();
@@ -1886,16 +1927,16 @@ int main(int argc, char* argv[])
         {
             ImGui::Begin("Gains");
             ImGui::Text("Mic Gain:");
-            ImGui::SliderFloat("##mic_gain", tx_mic_gain, 0.0f, 1.0f, "%.01f");
+            ImGui::SliderFloat("##mic_gain", tx_mic_gain, 0.0f, 1.0f, "%.2f");
 
             ImGui::Text("Rx Gain:");
-            ImGui::SliderFloat("##rx_gain", rx_gain, 0.0f, 1.5f, "%.01f");
+            ImGui::SliderFloat("##rx_gain", rx_gain, 0.0f, 1.5f, "%.3f");
 
             ImGui::Text("Speaker Gain:");
-            ImGui::SliderFloat("##spk_gain", spk_gain, 0.0f, 1.0f, "%.01f");
+            ImGui::SliderFloat("##spk_gain", spk_gain, 0.0f, 1.0f, "%.2f");
 
             ImGui::Text("Tx Gain:");
-            ImGui::SliderFloat("##tx_gain", tx_out_gain, 0.0f, 1.0f, "%.01f");
+            ImGui::SliderFloat("##tx_gain", tx_out_gain, 0.0f, 1.0f, "%.3f");
             ImGui::End();
         }
 
@@ -1909,7 +1950,7 @@ int main(int argc, char* argv[])
             ImGui::Text("Deviation: %.1f %%",diag->dev*100.0f);
 
             float val = diag->dev;
-            if(val>0.5f && val<1.0f){
+            if(val>0.5f && val<1.05f){
                 ImGui::PushStyleColor(ImGuiCol_PlotHistogram, (ImVec4)ImColor::HSV(2.0f/7.0f, 0.6f, 0.6f));
             }else{
                 ImGui::PushStyleColor(ImGuiCol_PlotHistogram, (ImVec4)ImColor::HSV(0.0f/7.0f, 0.6f, 0.6f));
@@ -1922,6 +1963,8 @@ int main(int argc, char* argv[])
             ImGui::Checkbox("Invert Polarity", &config->invert);
             ImGui::Checkbox("Decrypt", &config->encrypt);
             ImGui::InputText("AES Key", buf, 128, ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
+            ImGui::Checkbox("Debug", &config->debug_print);
+            debug_print = config->debug_print;
 
             if(rx){
                 ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(1 / 7.0f, 0.6f, 0.6f));
@@ -1941,7 +1984,10 @@ int main(int argc, char* argv[])
             ImGui::PopStyleVar(1);
 
             if (btn || StartRx || StopRx){
-                if(1){
+                if(tx){
+                    StopTx = true;
+                }
+                if(!tx){
                     ResetDiag(diag.get());
                     if(!running && !tx && !rx){
                         invert = config->invert;

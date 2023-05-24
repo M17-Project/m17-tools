@@ -27,12 +27,16 @@ void AudioSink::Start(){
     if(!isOpen){
         Open();
     }
-    dev.startStream();
+    if(!isRunning){
+        dev.startStream();
+        isRunning=true;
+    }
 }
 
 void AudioSink::Stop(){
-    if(isOpen){
+    if(isOpen && isRunning){
         dev.stopStream();
+        isRunning=false;
     }
 }
 
@@ -95,6 +99,7 @@ AudioSink::AudioSink(unsigned int SampleRate, unsigned int nBuffers, int Default
     parameters.nChannels = 2;
     parameters.firstChannel = 0;
     isOpen=false;
+    isRunning=false;
 }
 AudioSink::~AudioSink()
 {
@@ -128,12 +133,16 @@ void AudioSource::Start(){
     if(!isOpen){
         Open();
     }
-    dev.startStream();
+    if(!isRunning){
+        dev.startStream();
+        isRunning = true;
+    }
 }
 
 void AudioSource::Stop(){
-    if(isOpen){
+    if(isOpen && isRunning){
         dev.stopStream();
+        isRunning= false;
     }
 }
 
@@ -195,6 +204,7 @@ AudioSource::AudioSource(unsigned int SampleRate, unsigned int nBuffers, int Def
     parameters.nChannels = 1;
     parameters.firstChannel = 0;
     isOpen=false;
+    isRunning=false;
 }
 AudioSource::~AudioSource()
 {

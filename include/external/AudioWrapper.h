@@ -4,6 +4,7 @@ class AudioSink
 {
 protected:
     bool isOpen;
+    bool isRunning;
     RtAudio dev;
     std::vector< unsigned int > ids;
     std::vector<std::string> device_names;
@@ -38,6 +39,7 @@ class AudioSource
 {
 protected:
     bool isOpen;
+    bool isRunning;
     RtAudio dev;
     std::vector< unsigned int > ids;
     std::vector<std::string> device_names;
