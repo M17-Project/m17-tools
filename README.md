@@ -44,8 +44,6 @@ It also requires a modern C++17 compiler (GCC 8 minimum).
     cd build
     cmake ..
     make
-	sudo make install 
-	sudo ldconfig
     cd ../../../
 	
     mkdir build

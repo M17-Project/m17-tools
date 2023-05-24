@@ -1,35 +1,26 @@
 // Copyright 2020 Mobilinkd LLC.
 
-#include "Util.h"
-#include "queue.h"
-#include "FirFilter.h"
-#include "LinkSetupFrame.h"
+#include "M17Demodulator.h"
+#include "M17BitDemodulator.h"
 #include "CRC16.h"
-#include "Trellis.h"
-#include "Convolution.h"
-#include "PolynomialInterleaver.h"
-#include "M17Randomizer.h"
-#include "Util.h"
-#include "Golay24.h"
-
-#include "M17Modulator.h"
+#include "ax25_frame.h"
+#include "FirFilter.h"
+#include "queue.h"
 
 #include <codec2/codec2.h>
-
+#include <boost/crc.hpp>
 #include <boost/program_options.hpp>
 #include <boost/optional.hpp>
 #include <boost/algorithm/hex.hpp>
 
-#include <thread>
-
 #include <array>
-#include <iostream>
-#include <iomanip>
-#include <atomic>
-#include <optional>
-#include <mutex>
-
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <vector>
 
 
 #define CTR 1
@@ -55,6 +46,7 @@
 #endif
 #include <GLFW/glfw3.h> // Will drag system OpenGL headers
 #include <RtAudio.h>
+#include "AudioWrapper.h"
 #include "../external/serialib.h"
 
 #if defined (_WIN32) || defined(_WIN64)
@@ -133,23 +125,522 @@
     }
 #endif
 
+
+std::atomic<bool> running{false};
+
+
+using queue_t = mobilinkd::queue<int16_t, 1920>;
+
+std::shared_ptr<queue_t>squeue;
+std::shared_ptr<queue_t>basebandQueue;
+
+bool doBasebandCout = false;
+
+bool display_lsf = false;
+bool invert_input = false;
+bool quiet = false;
+bool debug = false;
+bool noise_blanker = false;
+
+//bool enc_key = false;
 uint8_t Key[32];	
 uint8_t Iv[16];
 struct AES_ctx ctx;
+bool frame_has_enc = false;
+
+enum class InputType {SYM, BIN, RRC};
+InputType inputType = InputType::RRC;
+
+enum class FrameType {AUDIO, DATA, MIXED, BERT};
+
+using lsf_t = std::array<uint8_t, 30>;
+
+enum class OutputType {SYM, BIN, RRC};
+
+OutputType outputType = OutputType::RRC;
+
+struct CODEC2 *codec2;
 
 // Generated using scikit-commpy
-const auto rrc_taps = std::array<double, 150>{
+/*const auto rrc_taps = std::array<double, 150>{
     0.0029364388513841593, 0.0031468394550958484, 0.002699564567597445, 0.001661182944400927, 0.00023319405581230247, -0.0012851320781224025, -0.0025577136087664687, -0.0032843366522956313, -0.0032697038088887226, -0.0024733964729590865, -0.0010285696910973807, 0.0007766690889758685, 0.002553421969211845, 0.0038920145144327816, 0.004451886520053017, 0.00404219185231544, 0.002674727068399207, 0.0005756567993179152, -0.0018493784971116507, -0.004092346891623224, -0.005648131453822014, -0.006126925416243605, -0.005349511529163396, -0.003403189203405097, -0.0006430502751187517, 0.002365929161655135, 0.004957956568090113, 0.006506845894531803, 0.006569574194782443, 0.0050017573119839134, 0.002017321931508163, -0.0018256054303579805, -0.00571615173291049, -0.008746639552588416, -0.010105075751866371, -0.009265784007800534, -0.006136551625729697, -0.001125978562075172, 0.004891777252042491, 0.01071805138282269, 0.01505751553351295, 0.01679337935001369, 0.015256245142156299, 0.01042830577908502, 0.003031522725559901, -0.0055333532968188165, -0.013403099825723372, -0.018598682349642525, -0.01944761739590459, -0.015005271935951746, -0.0053887880354343935, 0.008056525910253532, 0.022816244158307273, 0.035513467692208076, 0.04244131815783876, 0.04025481153629372, 0.02671818654865632, 0.0013810216516704976, -0.03394615682795165, -0.07502635967975885, -0.11540977897637611, -0.14703962203941534, -0.16119995609538576, -0.14969512896336504, -0.10610329539459686, -0.026921412469634916, 0.08757875030779196, 0.23293327870303457, 0.4006012210123992, 0.5786324696325503, 0.7528286479934068, 0.908262741447522, 1.0309661131633199, 1.1095611856548013, 1.1366197723675815, 1.1095611856548013, 1.0309661131633199, 0.908262741447522, 0.7528286479934068, 0.5786324696325503, 0.4006012210123992, 0.23293327870303457, 0.08757875030779196, -0.026921412469634916, -0.10610329539459686, -0.14969512896336504, -0.16119995609538576, -0.14703962203941534, -0.11540977897637611, -0.07502635967975885, -0.03394615682795165, 0.0013810216516704976, 0.02671818654865632, 0.04025481153629372, 0.04244131815783876, 0.035513467692208076, 0.022816244158307273, 0.008056525910253532, -0.0053887880354343935, -0.015005271935951746, -0.01944761739590459, -0.018598682349642525, -0.013403099825723372, -0.0055333532968188165, 0.003031522725559901, 0.01042830577908502, 0.015256245142156299, 0.01679337935001369, 0.01505751553351295, 0.01071805138282269, 0.004891777252042491, -0.001125978562075172, -0.006136551625729697, -0.009265784007800534, -0.010105075751866371, -0.008746639552588416, -0.00571615173291049, -0.0018256054303579805, 0.002017321931508163, 0.0050017573119839134, 0.006569574194782443, 0.006506845894531803, 0.004957956568090113, 0.002365929161655135, -0.0006430502751187517, -0.003403189203405097, -0.005349511529163396, -0.006126925416243605, -0.005648131453822014, -0.004092346891623224, -0.0018493784971116507, 0.0005756567993179152, 0.002674727068399207, 0.00404219185231544, 0.004451886520053017, 0.0038920145144327816, 0.002553421969211845, 0.0007766690889758685, -0.0010285696910973807, -0.0024733964729590865, -0.0032697038088887226, -0.0032843366522956313, -0.0025577136087664687, -0.0012851320781224025, 0.00023319405581230247, 0.001661182944400927, 0.002699564567597445, 0.0031468394550958484, 0.0029364388513841593, 0.0
-};
+};*/
 
 const auto evm_b = std::array<double, 3>{0.02008337, 0.04016673, 0.02008337};
 const auto evm_a = std::array<double, 3>{1.0, -1.56101808, 0.64135154};
 
-const char VERSION[] = "2.2";
-
 std::string ptt_on = "";
 std::string ptt_off = "";
 bool has_ptt = false;
+bool invert = false;
+bool enc_key = false;
+int8_t can = 10;
+
+std::vector<uint8_t> current_packet;
+size_t packet_frame_counter = 0;
+mobilinkd::CRC16<0x1021, 0xFFFF> packet_crc;
+mobilinkd::CRC16<0x5935, 0xFFFF> stream_crc;
+
+mobilinkd::PRBS9 prbs;
+
+template <typename T, size_t N>
+std::vector<uint8_t> to_packet(std::array<T, N> in)
+{
+    std::vector<uint8_t> result;
+    result.reserve(N/8);
+
+    uint8_t out = 0;
+    size_t b = 0;
+
+    for (auto c : in)
+    {
+        out = (out << 1) | c;
+        if (++b == 8)
+        {
+            result.push_back(out);
+            out = 0;
+            b = 0;
+        }
+    }
+
+    return result;
+}
+
+template <typename T, size_t N>
+void append_packet(std::vector<uint8_t>& result, std::array<T, N> in)
+{
+    uint8_t out = 0;
+    size_t b = 0;
+
+    for (auto c : in)
+    {
+        out = (out << 1) | c;
+        if (++b == 8)
+        {
+            result.push_back(out);
+            out = 0;
+            b = 0;
+        }
+    }
+}
+
+void dump_type(uint16_t type)
+{
+    std::cerr << ", ";
+    if (type & 1) {
+        std::cerr << "STR:";
+        switch ((type & 6) >> 1)
+        {
+            case 0:
+                std::cerr << "UNK";
+                break;
+            case 1:
+                std::cerr << "D/D";
+                break;
+            case 2:
+                std::cerr << "V/V";
+                break;
+            case 3:
+                std::cerr << "V/D";
+                break;
+        }
+		switch(3 & (type >> 3)){
+			case 0:
+				std::cerr << ", ENC:NONE,";
+				break;
+			case 1:
+				std::cerr << ", ENC:SCR,";
+				break;
+			case 2:
+				std::cerr << ", ENC:AES,";
+				break;
+			default:
+				std::cerr << ", ENC:UNK,";
+				break;
+		}
+    }
+    else
+    {
+        std::cerr << "PKT:";
+        switch ((type & 6) >> 1)
+        {
+            case 0:
+                std::cerr << "UNK";
+                break;
+            case 1:
+                std::cerr << "RAW";
+                break;
+            case 2:
+                std::cerr << "ENC";
+                break;
+            case 3:
+                std::cerr << "UNK";
+                break;
+        }
+    }
+
+    std::cerr << " CAN:" << std::dec << std::setw(2) << std::setfill('0') << int((type & 0x780) >> 7);
+}
+
+uint8_t last_FN[2];
+
+std::mutex coutMutex;
+
+struct Diagnostics{
+    std::string source = "";
+    std::string dest = "";
+    std::string dcd = "OFF";
+    float dev = 0.0f;
+    std::string lock = "UNLOCKED";
+    float evm = 0.0f;
+};
+
+void ResetDiag(Diagnostics* p_diag){
+    p_diag->source = "";
+    p_diag->dest = "";
+    p_diag->dcd = "OFF";
+    p_diag->dev = 0.0f;
+    p_diag->lock = "UNLOCKED";
+    p_diag->evm = 0.0f;
+}
+
+std::unique_ptr<Diagnostics> diag;
+
+template <typename T, size_t N>
+bool dump_lsf(std::array<T, N> const& lsf)
+{
+    using namespace mobilinkd;
+    
+    LinkSetupFrame::encoded_call_t encoded_call;
+	
+	frame_has_enc = false;
+	
+	uint16_t type = (lsf[12] << 8) | lsf[13];
+	
+	if((type & 1) && ((3 & (type >> 3)) != 0)) frame_has_enc = true;
+
+    if (display_lsf)
+    {
+        coutMutex.lock();
+        std::copy(lsf.begin() + 6, lsf.begin() + 12, encoded_call.begin());
+        auto src = LinkSetupFrame::decode_callsign(encoded_call);
+        std::cerr << "\nSRC: ";
+        for (auto x : src) if (x) std::cerr << x;
+
+        std::copy(lsf.begin(), lsf.begin() + 6, encoded_call.begin());
+        auto dest = LinkSetupFrame::decode_callsign(encoded_call);
+        std::cerr << ", DEST: ";
+        for (auto x : dest) if (x) std::cerr << x;
+
+        dump_type(type);
+
+        std::cerr << ", NONCE: ";
+        for (size_t i = 14; i != 28; ++i) std::cerr << std::hex << std::setw(2) << std::setfill('0') << int(lsf[i]);
+
+        uint16_t crc = (lsf[28] << 8) | lsf[29];
+        std::cerr << ", CRC: " << std::hex << std::setw(4) << std::setfill('0') << crc;
+        std::cerr << std::dec << std::endl;
+        diag->source = std::string(src.begin(),src.end());
+        diag->dest = std::string(dest.begin(),dest.end());
+        coutMutex.unlock();
+    }
+
+    current_packet.clear();
+    packet_frame_counter = 0;
+	
+  //if key and AES ENCRYPTION BITS are set
+	if(enc_key && frame_has_enc){
+		//copy meta field [NONCE + CTR] and FN
+		std::copy(std::begin(lsf)+14,std::begin(lsf)+28,std::begin(Iv));
+		Iv[14] = last_FN[0];
+		Iv[15] = last_FN[1];
+		
+		//init IV
+		AES_init_ctx_iv(&ctx, Key, Iv);
+	}
+
+    if (!(lsf[13] & 1)) // LSF type bit 0
+    {
+        uint8_t packet_type = (lsf[13] & 6) >> 1;
+
+        switch (packet_type)
+        {
+        case 1: // RAW -- ignore LSF.
+             break;
+        case 2: // ENCAPSULATED
+            append_packet(current_packet, lsf);
+            break;
+        default:
+            std::cerr << "LSF for reserved packet type" << std::endl;
+            append_packet(current_packet, lsf);
+        }
+    }
+
+    return true;
+}
+
+float *spk_gain;
+float *rx_gain;
+
+float *tx_mic_gain;
+float *tx_out_gain;
+
+int16_t ApplyGain(int16_t input, float* gain){
+    float ip = (float) input / (float) INT16_MAX;
+    ip *= (*gain);
+    int16_t val = std::min(std::max((int16_t)INT16_MIN,(int16_t)(ip*(INT16_MAX-1))),(int16_t)INT16_MAX);
+    return val;
+}
+
+float ApplyGainF(float input, float* gain){
+    return input * (*gain);
+}
+
+void AudioOutput(std::array<int16_t, 160> buf){
+    if(!doBasebandCout){
+        for (int i=0; i<buf.size(); i++){
+            int16_t b = ApplyGain(buf[i], spk_gain);
+            if(squeue->is_open()){
+                if(!squeue->put(b, std::chrono::milliseconds(3000))){
+                    std::cerr<<"AudioOutput(): ERROR OUTPUT QUEUE\n";
+                }
+            }
+        }
+    }
+    else{
+        std::cout.write((const char*)buf.data(), 320);
+    }
+}
+
+bool demodulate_audio(mobilinkd::M17FrameDecoder::audio_buffer_t const& audio, int viterbi_cost)
+{
+    bool result = true;
+
+    std::array<int16_t, 160> buf;
+    // First two bytes are the frame counter + EOS indicator.
+    if (viterbi_cost < 70 && (audio[0] & 0x80))
+    {
+        if (display_lsf) std::cerr << "\nEOS" << std::endl;
+        result = false;
+    }
+
+    if (noise_blanker && viterbi_cost > 80)
+    {
+        buf.fill(0);
+        AudioOutput(buf);
+        AudioOutput(buf);
+    }
+    else
+    {
+		if(enc_key && frame_has_enc){ //if -K provided and ENC bits set
+			
+			mobilinkd::M17FrameDecoder::audio_buffer_t enc_audio;
+			
+			// get codec2 payload
+			std::copy(audio.begin()+2,audio.begin()+18, enc_audio.begin());
+			
+			uint8_t* p_payload = enc_audio.data();
+			
+			//update IV
+			Iv[14] = audio[0];
+			Iv[15] = audio[1];
+			AES_init_ctx_iv(&ctx, Key, Iv);
+		
+			AES_CTR_xcrypt_buffer(&ctx, p_payload, 16);
+			
+			codec2_decode(codec2, buf.data(), p_payload);
+			AudioOutput(buf);
+			codec2_decode(codec2, buf.data(), p_payload + 8);
+			AudioOutput(buf);
+		}
+		else if(frame_has_enc && !enc_key){  //if -K isn't provided but ENC bits set - MUTE
+			buf.fill(0);
+			AudioOutput(buf);
+			AudioOutput(buf);
+		}			
+		else{
+			codec2_decode(codec2, buf.data(), audio.data() + 2);
+			AudioOutput(buf);
+			codec2_decode(codec2, buf.data(), audio.data() + 10);
+			AudioOutput(buf);
+		}
+    }
+
+    return result;
+}
+
+bool decode_packet(mobilinkd::M17FrameDecoder::packet_buffer_t const& packet_segment)
+{
+    if (packet_segment[25] & 0x80) // last frame of packet.
+    {
+        size_t packet_size = (packet_segment[25] & 0x7F) >> 2;
+        packet_size = std::min(packet_size, size_t(25));
+        for (size_t i = 0; i != packet_size; ++i)
+        {
+            current_packet.push_back(packet_segment[i]);
+        }
+        
+        boost::crc_optimal<16, 0x1021, 0xFFFF, 0xFFFF, true, true> crc;
+        crc.process_bytes(&current_packet.front(), current_packet.size());
+        uint16_t checksum = crc.checksum();
+
+        if (checksum == 0x0f47)
+        {
+            std::string ax25;
+            ax25.reserve(current_packet.size());
+            for (auto c : current_packet) ax25.push_back(char(c));
+            mobilinkd::ax25_frame frame(ax25);
+            std::cerr << '\n';
+            mobilinkd::write(std::cerr, frame);
+            return true;
+        }
+
+        std::cerr << "\nPacket checksum error: " << std::hex << checksum << std::dec << std::endl;
+
+        return false;
+    }
+
+    size_t frame_number = (packet_segment[25] & 0x7F) >> 2;
+    if (frame_number != packet_frame_counter)
+    {
+        std::cerr << "\nPacket frame sequence error. Got " << frame_number << ", expected " << packet_frame_counter << "\n";
+        return false;
+    }
+
+    packet_frame_counter += 1;
+
+    for (size_t i = 0; i != 25; ++i)
+    {
+        current_packet.push_back(packet_segment[i]);
+    }
+
+    return true;
+}
+
+
+bool decode_full_packet(mobilinkd::M17FrameDecoder::packet_buffer_t const& packet_segment)
+{
+    if (packet_segment[25] & 0x80) // last packet;
+    {
+        size_t packet_size = (packet_segment[25] & 0x7F) >> 2;
+        packet_size = std::min(packet_size, size_t(25));
+        for (size_t i = 0; i != packet_size; ++i)
+        {
+            current_packet.push_back(packet_segment[i]);
+        }
+
+        std::cout.write((const char*)&current_packet.front(), current_packet.size());
+
+        return true;
+    }
+
+    size_t frame_number = (packet_segment[25] & 0x7F) >> 2;
+    if (frame_number != packet_frame_counter++)
+    {
+        std::cerr << "Packet frame sequence error" << std::endl;
+        return false;
+    }
+
+    for (size_t i = 0; i != 25; ++i)
+    {
+        current_packet.push_back(packet_segment[i]);
+    }
+
+    return true;
+}
+
+bool decode_bert(mobilinkd::M17FrameDecoder::bert_buffer_t const& bert)
+{
+    for (int j = 0; j != 24; ++j) {
+        auto b = bert[j];
+        for (int i = 0; i != 8; ++i) {
+            prbs.validate(b & 0x80);
+            b <<= 1;
+        }
+    }
+
+    auto b = bert[24];
+    for (int i = 0; i != 5; ++i)
+    {
+        prbs.validate(b & 0x80);
+        b <<= 1;
+    }
+
+    return true;
+}
+
+
+
+bool handle_frame(mobilinkd::M17FrameDecoder::output_buffer_t const& frame, int viterbi_cost)
+{
+    using FrameType = mobilinkd::M17FrameDecoder::FrameType;
+
+    bool result = true;
+
+    switch (frame.type)
+    {
+        case FrameType::LSF:
+            result = dump_lsf(frame.lsf);
+            break;
+        case FrameType::LICH:
+            std::cerr << "LICH" << std::endl;
+            break;
+        case FrameType::STREAM:
+			std::copy(frame.stream.begin(), frame.stream.begin()+2, last_FN);
+            result = demodulate_audio(frame.stream, viterbi_cost);
+            break;
+        case FrameType::BASIC_PACKET:
+            result = decode_packet(frame.packet);
+            break;
+        case FrameType::FULL_PACKET:
+            result = decode_packet(frame.packet);
+            break;
+        case FrameType::BERT:
+            result = decode_bert(frame.bert);
+            break;
+    }
+
+    return result;
+}
+
+template <typename FloatType>
+void diagnostic_callback(bool dcd, FloatType evm, FloatType deviation, FloatType offset, bool locked,
+    FloatType clock, int sample_index, int sync_index, int clock_index, int viterbi_cost)
+{
+    if (debug) {
+        coutMutex.lock();
+        std::cerr << "\rdcd: " << std::setw(1) << int(dcd)
+            << ", evm: " << std::setfill(' ') << std::setprecision(4) << std::setw(8) << evm * 100 <<"%"
+            << ", deviation: " << std::setprecision(4) << std::setw(8) << deviation
+            << ", freq offset: " << std::setprecision(4) << std::setw(8) << offset
+            << ", locked: " << std::boolalpha << std::setw(6) << locked << std::dec
+            << ", clock: " << std::setprecision(7) << std::setw(8) << clock
+            << ", sample: " << std::setw(1) << sample_index << ", "  << sync_index << ", " << clock_index
+            << ", cost: " << viterbi_cost;
+        diag->dcd = dcd ? "ON" : "OFF";
+        diag->lock = locked ? "LOCK" : "UNLOCKED";
+        diag->dev = deviation;
+        diag->evm = evm * 100;
+        coutMutex.unlock();
+    }
+        
+    if (!dcd && prbs.sync()) { // Seems like there should be a better way to do this.
+        prbs.reset();
+    }
+
+    if (prbs.sync() && !quiet) {
+        if (!debug) {
+            std::cerr << '\r';
+        } else {
+            std::cerr << ", ";
+        }
+    
+        auto ber = double(prbs.errors()) / double(prbs.bits());
+        std::cerr << "BER: " << std::fixed << std::setprecision(6) << ber << " (" << prbs.bits() << ")";
+    }
+    std::cerr << std::flush;
+}
+const char VERSION[] = "2.2";
 
 struct Config
 {
@@ -161,22 +652,29 @@ struct Config
 	std::string tx_off_cmd;
 	bool action_ptt = false;
     uint16_t key;
-    bool verbose = false;
-    bool debug = false;
-    bool quiet = false;
 
+    bool verbose = false;
+    bool debug = true;
+    bool quiet = false;
+    bool invert = false;
+    bool lsf = true;
+    bool noise_blanker = false;
     bool bin = false;
     bool sym = false;
     bool rrc = true; // default is rrc
 
     bool bert = false; // Bit error rate testing.
-    bool invert = false;
     int can = 0; // default is 0
 	
 	bool encrypt = false; //Default is no Encryption
 	std::string CKEY; //AES Key
-	
-    /*
+    unsigned int dev_IDs[4] = {0u, 0u, 0u, 0u};
+    float dev_Gains[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    bool rig_enabled = false;
+    int ser_id = 0;
+    int baud_id = 0;
+    int ptt_id = 1;
+
     static std::optional<Config> parse(int argc, char* argv[])
     {
         namespace po = boost::program_options;
@@ -189,32 +687,16 @@ struct Config
         desc.add_options()
             ("help,h", "Print this help message and exit.")
             ("version,V", "Print the application verion and exit.")
-            ("src,S", po::value<std::string>(&result.source_address)->required(),
-                "transmitter identifier (your callsign).")
-            ("dest,D", po::value<std::string>(&result.destination_address),
-                "destination (default is broadcast).")
-			("transmit-on,T", po::value<std::string>(&result.tx_on_cmd)->default_value(""),
-                "Transmit/PTT activate action/command eg: toggle gpio on (default is no action).")
-			("transmit-off,O", po::value<std::string>(&result.tx_off_cmd)->default_value(""),
-                "Transmit/PTT deactivate action/command eg: toggle gpio off (default is no action).")
-            ("can,C", po::value<int>(&result.can)->default_value(10),
-                "channel access number.")
-            ("audio,a", po::value<std::string>(&result.audio_device),
-                "audio device (default is STDIN).")
-            ("event,e", po::value<std::string>(&result.event_device)->default_value("/dev/input/by-id/usb-C-Media_Electronics_Inc._USB_Audio_Device-event-if03"),
-                "event device (default is C-Media Electronics Inc. USB Audio Device).")
+            ("invert,i", po::bool_switch(&result.invert), "invert the received baseband")
+            ("noise-blanker,b", po::bool_switch(&result.noise_blanker), "noise blanker -- silence likely corrupt audio")
+            ("lsf,l", po::bool_switch(&result.lsf), "display the decoded LSF")
+            ("bin,x", po::bool_switch(&result.bin), "input packed dibits (default is rrc).")
+            ("rrc,r", po::bool_switch(&result.rrc), "input rrc filtered and scaled symbols (default).")
+            ("sym,s", po::bool_switch(&result.sym), "input symbols (default is rrc).")
 			("encrypt,K",po::value<std::string>(&result.CKEY), "hexadecimal string for AES 128, 192 or 256 Key (default is no encryption).")
-            ("key,k", po::value<uint16_t>(&result.key)->default_value(385),
-                "Linux event code for PTT (default is RADIO).")
-            ("bin,x", po::bool_switch(&result.bin), "output packed dibits (default is rrc).")
-            ("rrc,r", po::bool_switch(&result.rrc), "output rrc filtered and scaled symbols (default).")
-            ("sym,s", po::bool_switch(&result.sym), "output symbols (default is rrc).")
-            ("bert,B", po::bool_switch(&result.bert),
-                "output a bit error rate test stream (default is read audio from STDIN).")
-            ("invert,i", po::bool_switch(&result.invert), "invert the output baseband (only for rrc)")
             ("verbose,v", po::bool_switch(&result.verbose), "verbose output")
             ("debug,d", po::bool_switch(&result.debug), "debug-level output")
-            ("quiet,q", po::bool_switch(&result.quiet), "silence all output")
+            ("quiet,q", po::bool_switch(&result.quiet), "silence all output -- no BERT output")
             ;
 
         po::variables_map vm;
@@ -222,7 +704,7 @@ struct Config
 
         if (vm.count("help"))
         {
-            std::cout << "Read audio from STDIN and write baseband M17 to STDOUT\n"
+            std::cout << "Read M17 baseband from STDIN and write audio to STDOUT\n"
                 << desc << std::endl;
 
             return std::nullopt;
@@ -249,33 +731,10 @@ struct Config
             return std::nullopt;
         }
 
-        if (result.source_address.size() > 9)
-        {
-            std::cerr << "Source identifier too long." << std::endl;
-            return std::nullopt;
-        }
-
-        if (result.destination_address.size() > 9)
-        {
-            std::cerr << "Destination identifier too long." << std::endl;
-            return std::nullopt;
-        }
-
-        if (result.can < 0 || result.can > 15) {
-            std::cerr << "invalid channel access number (CAN) " << result.can << ". Must be 0-15." << std::endl;
-            return std::nullopt;
-        }
-
         if (result.sym + result.bin + result.rrc > 1)
         {
             std::cerr << "Only one of sym, bin or rrc may be chosen." << std::endl;
             return std::nullopt;
-        }
-		
-		if (result.tx_on_cmd.size() > 0 && result.tx_off_cmd.size() > 0)
-        {
-			result.action_ptt = true;
-            std::cerr << "PTT action provided." << std::endl;
         }
 		
 		switch(result.CKEY.length()/2){
@@ -301,24 +760,11 @@ struct Config
 				break;
 			}
 
-
         return result;
     }
-    */
 };
 
-enum class FrameType {AUDIO, DATA, MIXED, BERT};
-
-using lsf_t = std::array<uint8_t, 30>;
-
-std::atomic<bool> running{false};
-
-enum class OutputType {SYM, BIN, RRC};
-
-OutputType outputType = OutputType::RRC;
-bool invert = false;
-bool enc_key = false;
-int8_t can = 10;
+mobilinkd::M17Demodulator<float> *pdemod = new mobilinkd::M17Demodulator<float>(handle_frame);
 
 std::random_device dev;
 std::mt19937 rng(dev());
@@ -333,18 +779,6 @@ void signal_handler(int)
 }
 
 
-int8_t bits_to_symbol(uint8_t bits)
-{
-    switch (bits)
-    {
-    case 0: return 1;
-    case 1: return 3;
-    case 2: return -1;
-    case 3: return -3;
-    }
-    abort();
-}
-
 template <typename T, size_t N>
 std::array<int8_t, N / 2> bits_to_symbols(const std::array<T, N>& bits)
 {
@@ -355,44 +789,6 @@ std::array<int8_t, N / 2> bits_to_symbols(const std::array<T, N>& bits)
         result[index++] = bits_to_symbol((bits[i] << 1) | bits[i + 1]);
     }
     return result;
-}
-
-template <typename T, size_t N>
-std::array<int8_t, N * 4> bytes_to_symbols(const std::array<T, N>& bytes)
-{
-    std::array<int8_t, N * 4> result;
-    size_t index = 0;
-    for (auto b : bytes)
-    {
-        for (size_t i = 0; i != 4; ++i)
-        {
-            result[index++] = bits_to_symbol(b >> 6);
-            b <<= 2;
-        }
-    }
-    return result;
-}
-
-template <size_t N>
-std::array<int16_t, N*10> symbols_to_baseband(std::array<int8_t, N> symbols)
-{
-    using namespace mobilinkd;
-
-    static BaseFirFilter<double, std::tuple_size<decltype(rrc_taps)>::value> rrc = makeFirFilter(rrc_taps);
-
-    std::array<int16_t, N*10> baseband;
-    baseband.fill(0);
-    for (size_t i = 0; i != symbols.size(); ++i)
-    {
-        baseband[i * 10] = symbols[i];
-    }
-
-    for (auto& b : baseband)
-    {
-        b = rrc(b) * 7168.0 * (invert ? -1.0 : 1.0);
-    }
-
-    return baseband;
 }
 
 
@@ -428,17 +824,9 @@ void output_symbols(std::array<uint8_t, 2> sync_word, const bitstream_t& frame)
 
 using lich_segment_t = std::array<uint8_t, 96>;
 using lich_t = std::array<lich_segment_t, 6>;
-using queue_t = mobilinkd::queue<int16_t, 320>;
-using long_queue_t = mobilinkd::queue<int16_t, 1920>;
 using audio_frame_t = std::array<int16_t, 320>;
 using codec_frame_t = std::array<uint8_t, 16>;
 using data_frame_t = std::array<int8_t, 272>;
-
-std::shared_ptr<queue_t>squeue;
-std::shared_ptr<long_queue_t>basebandQueue;
-
-bool doBasebandCout = true;
-
 
 // rrc
 void output_baseband(std::array<uint8_t, 2> sync_word, const bitstream_t& frame)
@@ -451,12 +839,14 @@ void output_baseband(std::array<uint8_t, 2> sync_word, const bitstream_t& frame)
     std::copy(symbols.begin(), symbols.end(), fit);
     auto baseband = symbols_to_baseband(temp);
     for (auto b : baseband){
-        if(!doBasebandCout && basebandQueue->is_open()){
-            if(!basebandQueue->put(b, std::chrono::milliseconds(3000))){
+        if(!doBasebandCout && squeue->is_open()){
+            b = ApplyGain(b, tx_out_gain);
+            if(!squeue->put(b, std::chrono::milliseconds(3000))){
                 std::cerr<<"output_baseband(): ERROR OUTPUT QUEUE\n";
             }
         }
         else{
+            std::cerr<<"output_baseband(): ERROR CLOSED QUEUE\n";
             std::cout << uint8_t(b & 0xFF) << uint8_t(b >> 8);
         }
     } 
@@ -501,12 +891,14 @@ void send_preamble()
                 auto preamble_symbols = bytes_to_symbols(preamble_bytes);
                 auto preamble_baseband = symbols_to_baseband(preamble_symbols);
                 for (auto b : preamble_baseband){
-                    if(!doBasebandCout && basebandQueue->is_open()){
-                        if(!basebandQueue->put(b, std::chrono::milliseconds(3000))){
+                    if(!doBasebandCout && squeue->is_open()){
+                        b = ApplyGain(b, tx_out_gain);
+                        if(!squeue->put(b, std::chrono::milliseconds(3000))){
                             std::cerr<<"send_preamble(): ERROR OUTPUT QUEUE\n";
                         }
                     }
                     else{
+                        std::cerr<<"send_preamble(): ERROR CLOSED QUEUE\n";
                         std::cout << uint8_t(b & 0xFF) << uint8_t(b >> 8);
                     }
                 } 
@@ -561,12 +953,14 @@ void output_eot()
                 }
                 auto baseband = symbols_to_baseband(out_symbols);
                 for (auto b : baseband){
-                    if(!doBasebandCout && basebandQueue->is_open()){
-                        if(!basebandQueue->put(b, std::chrono::seconds(300))){
+                    if(!doBasebandCout && squeue->is_open()){
+                        b = ApplyGain(b, tx_out_gain);
+                        if(!squeue->put(b, std::chrono::seconds(300))){
                             std::cerr<<"send_eot(): ERROR OUTPUT QUEUE\n";
                         }
                     }
                     else{
+                        std::cerr<<"send_eot(): ERROR CLOSED QUEUE\n";
                         std::cout << uint8_t(b & 0xFF) << uint8_t(b >> 8);
                     }
                 }
@@ -575,12 +969,13 @@ void output_eot()
 				flush_symbols.fill(0);
 				auto f_baseband = symbols_to_baseband(flush_symbols);
                 for (auto b : f_baseband) {
-                    if(!doBasebandCout && basebandQueue->is_open()){
-                        if(!basebandQueue->put(b, std::chrono::seconds(300))){
+                    if(!doBasebandCout && squeue->is_open()){
+                        if(!squeue->put(b, std::chrono::seconds(300))){
                             std::cerr<<"send_eot(): ERROR OUTPUT QUEUE\n";
                         }
                     }
                     else{
+                        std::cerr<<"send_eot(): ERROR CLOSED QUEUE\n";
                         std::cout << uint8_t(b & 0xFF) << uint8_t(b >> 8);
                     }
                 }
@@ -626,8 +1021,8 @@ lsf_t send_lsf(const std::string& src, const std::string& dest, const FrameType 
     }
 	
 	if(enc_key){
-		//set enc bits 10 - AES
-		result[13] |= (1<<4);
+		//set enc bits 01 - AES
+		result[13] |= (1<<3);
 		
 		uint32_t timestamp = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 		uint32_t random_data[2] = {uint_dist(rng), uint_dist(rng)};
@@ -902,7 +1297,7 @@ void transmit(std::shared_ptr<queue_t>& queue, const lsf_t& lsf)
     {
         int16_t sample;
         if (!queue->get(sample, std::chrono::milliseconds(3000))) break;
-        audio[index++] = sample;
+        audio[index++] = ApplyGain(sample, tx_mic_gain);
         if (index == audio.size())
         {
             index = 0;
@@ -937,14 +1332,16 @@ void transmit(std::shared_ptr<queue_t>& queue, const lsf_t& lsf)
     codec2_destroy(codec2);
 }
 
+
+
 int record( void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames, double streamTime, RtAudioStreamStatus status, void *userData )
 {
     if ( status )
-        std::cout << "Stream overflow detected!" << std::endl;
+        std::cerr << "(record) Stream overflow detected!" << std::endl;
     
     for(unsigned int i=0; i<nBufferFrames; i++){
         uint16_t sample = ((int16_t*)inputBuffer)[i];
-        if(!squeue->put(sample, std::chrono::seconds(300))){
+        if(!basebandQueue->put(sample, std::chrono::seconds(300))){
             std::cerr<<"record(): ERROR INPUT QUEUE";
         }
     }
@@ -956,15 +1353,15 @@ int record( void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames, d
 int playback( void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames, double streamTime, RtAudioStreamStatus status, void *userData )
 {
     if ( status )
-        std::cout << "Stream overflow detected!" << std::endl;
+        std::cerr << "(playback) Stream overflow detected!" << std::endl;
 
     int16_t *buffer = (int16_t *) outputBuffer;
 
     for(unsigned int i=0; i<nBufferFrames; i++){
         int16_t sample; 
-        if(basebandQueue->is_closed()){
+        if(squeue->is_closed()){
             sample = 0;
-        }else if(!basebandQueue->get(sample, std::chrono::milliseconds(3000))){
+        }else if(!squeue->get(sample, std::chrono::milliseconds(3000))){
             break;
         }
         for (unsigned int j=0; j<2; j++ ) {
@@ -1011,8 +1408,10 @@ void drawTestDock()
 
 		
 		ImGui::DockBuilderDockWindow("M17 Modulator", dock_main_id);
-		ImGui::DockBuilderDockWindow("Audio", dock_id_bottom);
+        ImGui::DockBuilderDockWindow("M17 Demodulator", dock_main_id);
         ImGui::DockBuilderDockWindow("Rig Control", dock_id_bottom);
+        ImGui::DockBuilderDockWindow("Audio", dock_id_bottom);
+        ImGui::DockBuilderDockWindow("Gains", dock_id_bottom);
 		ImGui::DockBuilderFinish(dockspace_id);
 	}
     
@@ -1022,55 +1421,167 @@ void drawTestDock()
 }
 
 
-
 static void glfw_error_callback(int error, const char* description)
 {
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
 }
 
+void func(std::shared_ptr<queue_t>& queue){
+    std::cout << "Hi I'm Thready McThreadFace\n";
+    while(!queue->is_closed() && queue->empty()){
+        std::this_thread::yield(); 
+    }
+    while (!queue->is_closed())
+    {
+        int16_t sample;
+        if (!queue->get(sample, std::chrono::milliseconds(3000))) break;
+        if (invert_input) sample *= -1;
+        float s = sample / 44000.0f;
+        s = ApplyGainF(s,rx_gain);
+        (*pdemod)(s);
+    }
+}
+
+void saveConfig(const std::string& filename, std::optional<Config>& config) {
+    std::ofstream file(filename);
+    if (file.is_open()) {
+        file << config->source_address << std::endl;
+        file << config->destination_address << std::endl;
+        file << config->audio_device << std::endl;
+        file << config->event_device << std::endl;
+        file << config->tx_on_cmd << std::endl;
+        file << config->tx_off_cmd << std::endl;
+        file << config->action_ptt << std::endl;
+        file << config->key << std::endl;
+        file << config->verbose << std::endl;
+        file << config->debug << std::endl;
+        file << config->quiet << std::endl;
+        file << config->invert << std::endl;
+        file << config->lsf << std::endl;
+        file << config->noise_blanker << std::endl;
+        file << config->bin << std::endl;
+        file << config->sym << std::endl;
+        file << config->rrc << std::endl;
+        file << config->bert << std::endl;
+        file << config->can << std::endl;
+        file << config->encrypt << std::endl;
+        file << config->CKEY << std::endl;
+        file << config->dev_IDs[0] << std::endl;
+        file << config->dev_IDs[1] << std::endl;
+        file << config->dev_IDs[2] << std::endl;
+        file << config->dev_IDs[3] << std::endl;
+        file << config->dev_Gains[0] << std::endl;
+        file << config->dev_Gains[1] << std::endl;
+        file << config->dev_Gains[2] << std::endl;
+        file << config->dev_Gains[3] << std::endl;
+        file << config->rig_enabled << std::endl;
+        file << config->ser_id << std::endl;
+        file << config->baud_id << std::endl;
+        file << config->ptt_id << std::endl;
+
+        file.close();
+    } else {
+        std::cerr << "Unable to open file for writing." << std::endl;
+    }
+}
+
+bool readConfig(const std::string& filename, std::optional<Config>& config) {
+    std::ifstream file(filename);
+    if (file.is_open()) {
+        std::string line;
+
+        // Read each line and assign it to the corresponding member of the Config struct
+        std::getline(file, config->source_address);
+        std::getline(file, config->destination_address);
+        std::getline(file, config->audio_device);
+        std::getline(file, config->event_device);
+        std::getline(file, config->tx_on_cmd);
+        std::getline(file, config->tx_off_cmd);
+        file >> config->action_ptt;
+        file >> config->key;
+        file >> config->verbose;
+        file >> config->debug;
+        file >> config->quiet;
+        file >> config->invert;
+        file >> config->lsf;
+        file >> config->noise_blanker;
+        file >> config->bin;
+        file >> config->sym;
+        file >> config->rrc;
+        file >> config->bert;
+        file >> config->can;
+        file >> config->encrypt;
+        std::getline(file >> std::ws, config->CKEY); // Read the remaining part of the line (including spaces)
+        file >>  config->dev_IDs[0];
+        file >>  config->dev_IDs[1];
+        file >>  config->dev_IDs[2];
+        file >>  config->dev_IDs[3];
+        file >>  config->dev_Gains[0];
+        file >>  config->dev_Gains[1];
+        file >>  config->dev_Gains[2];
+        file >>  config->dev_Gains[3];
+        file >>  config->rig_enabled;
+        file >>  config->ser_id;
+        file >>  config->baud_id;
+        file >>  config->ptt_id;
+
+        file.close();
+        return true;
+    } else {
+        std::cerr << "Unable to open file for reading." << std::endl;
+        return false;
+    }
+}
 
 int main(int argc, char* argv[])
 {
     using namespace mobilinkd;
-	
-#ifdef WIN32
-	// Set "stdin" to have binary mode:
-   auto result = _setmode( _fileno( stdin ), _O_BINARY );
-   if( result == -1 )
-      perror( "Cannot set mode" );
-   else
-      std::cerr << "'stdin' successfully changed to binary mode\n";
-  
-  // Set "stdout" to have binary mode:
-  result = _setmode( _fileno( stdout ), _O_BINARY );
-   if( result == -1 )
-      perror( "Cannot set mode" );
-   else
-      std::cerr << "'stdout' successfully changed to binary mode\n";
-#endif
 
-    auto config = new Config;
+    auto config = Config::parse(argc, argv);
+    if (!config) return 0;
 
-    if (config->sym) {
-        outputType = OutputType::SYM;
-    }
-    else if (config->bin) {
-        outputType = OutputType::BIN;
-    }
-    else {
-        outputType = OutputType::RRC;
+    (*pdemod).diagnostics(diagnostic_callback<float>);
+
+    std::string fname("config.ini");
+    if(!readConfig(fname,config)){
+        std::cerr << "No default cfg loaded.\n";
+        config->lsf = true;
+        config->debug = true;
     }
 
+    display_lsf = config->lsf;
+    invert_input = config->invert;
     invert = config->invert;
-    can = config->can;
+    quiet = config->quiet;
+    debug = config->debug;
+    noise_blanker = config->noise_blanker;
 	enc_key = config->encrypt;
-	
-	has_ptt = config->action_ptt;
+
+    has_ptt = config->action_ptt;
 	ptt_on = config->tx_on_cmd;
 	ptt_off = config->tx_off_cmd;
+
+    can = config->can;
 	
 	std::string hash = boost::algorithm::unhex(config->CKEY);
 	std::copy(hash.begin(), hash.end(), Key);
+
+    diag = std::make_unique<Diagnostics>();
+
+    if (config->sym) {
+        inputType = InputType::SYM;
+        outputType = OutputType::SYM;
+    }
+    else if (config->bin) {
+        inputType = InputType::BIN;
+        outputType = OutputType::BIN;
+    }
+    else {
+        inputType = InputType::RRC;
+        outputType = OutputType::RRC;
+    }
+
+    codec2 = ::codec2_create(CODEC2_MODE_3200);
 
     // Setup window
     glfwSetErrorCallback(glfw_error_callback);
@@ -1101,7 +1612,7 @@ int main(int argc, char* argv[])
 #endif
 
     // Create window with graphics context
-    GLFWwindow* window = glfwCreateWindow(300, 500, "Dear ImGui GLFW+OpenGL3 example", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(300, 600, "M17-RTX Gui", NULL, NULL);
     if (window == NULL)
         return 1;
     glfwMakeContextCurrent(window);
@@ -1155,77 +1666,41 @@ int main(int argc, char* argv[])
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
+    bool rx = false;
     bool tx = false;
-    static char str1[7] = "";
-    static char str2[7] = "ALL";
+    bool rig_enabled = config->rig_enabled;
+
+    static char str1[8] = "";
+    static char str2[8] = "ALL";
     static char buf[128] = "";
+
+    std::copy(config->source_address.begin(),config->source_address.end(),&str1[0]);
+    std::copy(config->destination_address.begin(),config->destination_address.end(),&str2[0]);
+    std::copy(config->CKEY.begin(),config->CKEY.end(),&buf[0]);
 
     std::string ptt[2] = {"OFF","ON"};
 
-    RtAudio adc;
-    RtAudio dac;
-    std::vector< unsigned int > ids = adc.getDeviceIds();
-    if ( ids.size() == 0 ) {
-      std::cout << "No devices found." << std::endl;
-      return 0;
-    }
+    AudioSource BasebandSrc(48000u, 1920u, config->dev_IDs[0]);
+    AudioSource VoiceSrc(8000u, 320u, config->dev_IDs[1]);
 
-    std::vector<std::string> in_device_names;
-    std::vector<std::string> out_device_names;
+    AudioSink VoiceSink(8000u, 320u, config->dev_IDs[2]);
+    AudioSink BasebandSink(48000u, 64u, config->dev_IDs[3]);
 
-    std::vector<int> in_device_ids;
-    std::vector<int> out_device_ids;
+    BasebandSrc.SetCallback(&record);
+    VoiceSrc.SetCallback(&record);
 
-    int in_dev_id=0;
-    int out_dev_id=0;
-    
-    out_device_names.push_back("STD::COUT");
+    BasebandSink.SetCallback(&playback);
+    VoiceSink.SetCallback(&playback);
 
-    RtAudio::DeviceInfo info;
-    for ( unsigned int n=0; n<ids.size(); n++ ) {
-        info = adc.getDeviceInfo( ids[n] );
-        if(info.inputChannels>0){
-            in_device_names.push_back(std::string(info.name));
-            in_device_ids.push_back(ids[n]);
-            if(info.isDefaultInput)
-                in_dev_id = in_device_ids.size()-1;
-        }
-    }
-
-    for ( unsigned int n=0; n<ids.size(); n++ ) {
-        info = dac.getDeviceInfo( ids[n] );
-        if(info.outputChannels>0){
-            out_device_names.push_back(std::string(info.name));
-            out_device_ids.push_back(ids[n]);
-            if(info.isDefaultInput)
-                out_dev_id = out_device_ids.size()-1;
-        }
-    }
-
-    RtAudio::StreamParameters in_parameters;
-    in_parameters.deviceId = in_device_ids[in_dev_id];
-    in_parameters.nChannels = 1;
-    in_parameters.firstChannel = 0;
-    unsigned int in_sampleRate = 8000;
-    unsigned int in_bufferFrames = 320; // 320 sample frames
-
-    RtAudio::StreamParameters out_parameters;
-    out_parameters.deviceId = out_device_ids[out_dev_id];
-    out_parameters.nChannels = 2;
-    out_parameters.firstChannel = 0;
-    unsigned int out_sampleRate = 48000;
-    unsigned int out_bufferFrames = 64; // 1920 sample frames
-
-    adc.openStream( NULL, &in_parameters, RTAUDIO_SINT16, in_sampleRate, &in_bufferFrames, &record );
-
-    dac.openStream( &out_parameters,  NULL, RTAUDIO_SINT16, out_sampleRate, &out_bufferFrames, &playback );
+    BasebandSrc.Open();
+    VoiceSink.Open();
 
     std::thread thd;
 
     serialib serial;
     bool hasSerial = false;
     std::vector<std::string> Serialports = get_available_ports(serial);
-    int port_id = 0;
+    int port_id = config->ser_id;
 
     if(Serialports.size() == 0){
         std::cerr << "No serial ports found.\n";
@@ -1235,12 +1710,37 @@ int main(int argc, char* argv[])
     }
 
     std::vector<int> Serialbaud = {115200};
-    int baud_id = 0;
+    int baud_id = config->baud_id;
 
     std::vector<std::string> Serialptt = {"DTR","RTS"};
-    int ptt_id = 1;
+    int ptt_id = config->ptt_id;
 
-    bool rig_enabled = 0;
+    if(rig_enabled && hasSerial){
+        std::cerr << "Trying to open: " << Serialports[port_id] << "\n";
+        char errorOpening = serial.openDevice(Serialports[port_id].c_str(), 115200);
+        // If connection fails, return the error code otherwise, display a success message
+        if (errorOpening!=1){
+            std::cerr << "Error: " << errorOpening << "\n";
+        }else{
+            std::cerr << "Serial: " << Serialports[port_id] << "Is open!\n";
+        }
+        serial.RTS(false);
+        serial.DTR(false);
+    }
+
+    bool StartRx=false;
+    bool StopRx=false;
+
+    float g0 = config->dev_Gains[0];
+    float g1 = config->dev_Gains[1];
+    float g2 = config->dev_Gains[2];
+    float g3 = config->dev_Gains[3];
+
+    tx_out_gain = &g3;
+    tx_mic_gain = &g0;
+    rx_gain = &g1;
+    spk_gain = &g2;
+
 
     // Main loop
     while (!glfwWindowShouldClose(window))
@@ -1266,7 +1766,7 @@ int main(int argc, char* argv[])
             ImGui::InputTextWithHint("SRC", "SRC CALLSIGN", str1, 8, ImGuiInputTextFlags_CharsUppercase);
             ImGui::InputTextWithHint("DST", "DST CALLSIGN", str2, 8, ImGuiInputTextFlags_CharsUppercase);
             ImGui::InputInt("CAN", &config->can);
-	        config->can = std::min<int>(15,std::max<int>(0,config->can));
+	            config->can = std::min<int>(15,std::max<int>(0,config->can));
             ImGui::Checkbox("Invert Polarity", &config->invert);
             ImGui::Checkbox("Encrypt", &config->encrypt);
             ImGui::InputText("AES Key", buf, 128, ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
@@ -1285,10 +1785,16 @@ int main(int argc, char* argv[])
 
             auto btn = ImGui::Button("PTT",button_sz);
 
-            if (btn){
+            ImGui::PopStyleColor(2);
+            ImGui::PopStyleVar(1);           
+
+            if (btn || (StopRx && !rx) ){
                 config->source_address = std::string(str1);
                 config->destination_address = std::string(str2);
                 if(config->source_address.length()>2){
+                    if(StopRx){
+                        StopRx=false;
+                    }
                     if(!running){
                         invert = config->invert;
                         can = config->can;
@@ -1303,12 +1809,10 @@ int main(int argc, char* argv[])
                         std::copy(hash.begin(), hash.end(), Key);
                        
                         squeue = std::make_shared<queue_t>();
-                        basebandQueue = std::make_shared<long_queue_t>();
+                        basebandQueue = std::make_shared<queue_t>();
 
-                        adc.startStream();
-                        if(!doBasebandCout){
-                            dac.startStream();
-                        }
+                        VoiceSrc.Start();
+                        BasebandSink.Start();
 
                         if(has_ptt){
                             std::cerr << "\r\nPTT: ON \n";          
@@ -1335,24 +1839,24 @@ int main(int argc, char* argv[])
 
                         running = true;
 
-                        thd = std::thread(transmit, std::ref(squeue), std::ref(lsf));
+                        thd = std::thread(transmit, std::ref(basebandQueue), std::ref(lsf));
                     
                         std::cerr << "m17-mod running. ctrl-D to break." << std::endl;
 
                         tx = true;
 
+                    }else if(rx){
+                        StopRx = true;
                     }else{
                         running = false;
-                        
-                        adc.stopStream();
-                        squeue.get()->close();
-                        
-                        thd.join();
 
+                        VoiceSrc.Stop();
                         basebandQueue.get()->close();
-                        if(!doBasebandCout){
-                            dac.stopStream();
-                        }                        
+                        
+                        thd.join(); 
+
+                        squeue.get()->close();
+                        BasebandSink.Stop();              
 
                         if(rig_enabled && hasSerial){
                             std::this_thread::sleep_for(std::chrono::milliseconds(40)); // Ptt delay
@@ -1373,43 +1877,154 @@ int main(int argc, char* argv[])
                             system(ptt_off.c_str());
                         }
                         tx = false;
+                        StartRx=true;
                     }
                 }
             }
+        }
+
+        {
+            ImGui::Begin("Gains");
+            ImGui::Text("Mic Gain:");
+            ImGui::SliderFloat("##mic_gain", tx_mic_gain, 0.0f, 1.0f, "%.01f");
+
+            ImGui::Text("Rx Gain:");
+            ImGui::SliderFloat("##rx_gain", rx_gain, 0.0f, 1.5f, "%.01f");
+
+            ImGui::Text("Speaker Gain:");
+            ImGui::SliderFloat("##spk_gain", spk_gain, 0.0f, 1.0f, "%.01f");
+
+            ImGui::Text("Tx Gain:");
+            ImGui::SliderFloat("##tx_gain", tx_out_gain, 0.0f, 1.0f, "%.01f");
+            ImGui::End();
+        }
+
+        {
+            ImGui::Begin("M17 Demodulator");
+            ImGui::Text("SOURCE: %s",diag->source.c_str());
+            ImGui::Text("DESTINATION: %s",diag->dest.c_str());
+            ImGui::Text("DCD: %s",diag->dcd.c_str());
+            ImGui::Text("Lock: %s",diag->lock.c_str());
+            ImGui::Text("EVM: %.1f %%",diag->evm);
+            ImGui::Text("Deviation: %.1f %%",diag->dev*100.0f);
+
+            float val = diag->dev;
+            if(val>0.5f && val<1.0f){
+                ImGui::PushStyleColor(ImGuiCol_PlotHistogram, (ImVec4)ImColor::HSV(2.0f/7.0f, 0.6f, 0.6f));
+            }else{
+                ImGui::PushStyleColor(ImGuiCol_PlotHistogram, (ImVec4)ImColor::HSV(0.0f/7.0f, 0.6f, 0.6f));
+            }
+            
+            ImGui::ProgressBar(val, ImVec2(0.0f, 0.0f));
+            //ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+            ImGui::PopStyleColor(1);
+
+            ImGui::Checkbox("Invert Polarity", &config->invert);
+            ImGui::Checkbox("Decrypt", &config->encrypt);
+            ImGui::InputText("AES Key", buf, 128, ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
+
+            if(rx){
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(1 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.4f, 0.6f));
+            }
+            else{
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(2 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(2 / 7.0f, 0.4f, 0.6f));
+            }
+
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.0f);
+            ImVec2 button_sz(ImGui::GetContentRegionAvail().x, 40);
+
+            auto btn = ImGui::Button("START",button_sz);
+
             ImGui::PopStyleColor(2);
             ImGui::PopStyleVar(1);
 
-            ImGui::Text("PTT = %s", ptt[tx].c_str());
-            ImGui::End();
+            if (btn || StartRx || StopRx){
+                if(1){
+                    ResetDiag(diag.get());
+                    if(!running && !tx && !rx){
+                        invert = config->invert;
+                        enc_key = config->encrypt;
+        
+                        config->CKEY = std::string(buf);
+                        std::string hash = boost::algorithm::unhex(config->CKEY);
+                        std::copy(hash.begin(), hash.end(), Key);
+                       
+                        squeue = std::make_shared<queue_t>();
+                        basebandQueue = std::make_shared<queue_t>();
 
+                        BasebandSrc.Start();
+                        VoiceSink.Start();
+
+                        if(rig_enabled && hasSerial){
+                            std::this_thread::sleep_for(std::chrono::milliseconds(40)); // Ptt delay
+                            switch (ptt_id)
+                            {
+                            case 0:
+                                serial.DTR(false);
+                                break;
+                            case 1:
+                                serial.RTS(false);
+                                serial.DTR(false);
+                                break;
+                            }
+                        }
+                        
+                        if(has_ptt){
+                            std::cerr << "\r\nPTT: OFF \n";          
+                            system(ptt_off.c_str());
+                        }
+
+                        running = true;
+
+                        thd = std::thread(func, std::ref(basebandQueue));
+                    
+                        std::cerr << "m17-demod running. ctrl-D to break." << std::endl;
+
+                        rx = true;
+                        StartRx=false;
+                    }else{
+                        running = false;
+                        
+                        BasebandSrc.Stop();
+                        basebandQueue.get()->close();
+                        
+                        thd.join(); 
+
+                        squeue.get()->close();
+                        VoiceSink.Stop();          
+                        rx = false;
+                    }
+                }
+            }
+            ImGui::End();
         }
+
         {
             ImGui::Begin("Audio");
-            ImGui::Text("Input Device:");
+            ImGui::Text("Input Device [MIC]:");
             float menuWidth = ImGui::GetContentRegionAvail().x;
             ImGui::SetNextItemWidth(menuWidth);
-            if (ImGui::BeginCombo("input_audio",in_device_names[in_dev_id].c_str())) {
-                for (int i = 0; i < in_device_names.size(); ++i) {
-                    const bool isSelected = (in_dev_id == i);
-                    if (ImGui::Selectable(in_device_names[i].c_str(), isSelected)) {
-                        in_dev_id = i;
+            if (ImGui::BeginCombo("input_audio_0",VoiceSrc.GetCurrentDeviceNameC())) {
+                for (int i = 0; i < VoiceSrc.GetNumDevices(); ++i) {
+                    const bool isSelected = (VoiceSrc.GetCurrentDeviceId() == i);
+                    if (ImGui::Selectable(VoiceSrc.GetDeviceNameC(i), isSelected)) {
                         if(running){
-                            tx = false;
+                            rx = false;
                             running = false;
 
-                            adc.stopStream();
-                            squeue.get()->close();
-                            
-                            thd.join();
-
+                            BasebandSrc.Stop();
+                            VoiceSrc.Stop();
                             basebandQueue.get()->close();
-                            if(!doBasebandCout){
-                                dac.stopStream();
-                            }
+                            
+                            thd.join(); 
+
+                            squeue.get()->close();
+                            BasebandSink.Stop();
+                            VoiceSink.Stop();
                         }
-                        adc.closeStream();
-                        in_parameters.deviceId = in_device_ids[in_dev_id];
-                        adc.openStream( NULL, &in_parameters, RTAUDIO_SINT16, in_sampleRate, &in_bufferFrames, &record );
+                        VoiceSrc.ChangeDevice(i);
                     }
 
                     // Set the initial focus when opening the combo
@@ -1420,38 +2035,29 @@ int main(int argc, char* argv[])
                 }
                 ImGui::EndCombo();
             }
-            ImGui::Text("Output Device:");
+
+            ImGui::Text("Input Device [RX]:");
+            menuWidth = ImGui::GetContentRegionAvail().x;
             ImGui::SetNextItemWidth(menuWidth);
-            if (ImGui::BeginCombo("output_audio",out_device_names[out_dev_id].c_str())) {
-                for (int i = 0; i < out_device_names.size(); ++i) {
-                    const bool isSelected = (out_dev_id == i);
-                    if (ImGui::Selectable(out_device_names[i].c_str(), isSelected)) {
-                        out_dev_id = i;
-                        
+            if (ImGui::BeginCombo("input_audio_1",BasebandSrc.GetCurrentDeviceNameC())) {
+                for (int i = 0; i < BasebandSrc.GetNumDevices(); ++i) {
+                    const bool isSelected = (BasebandSrc.GetCurrentDeviceId() == i);
+                    if (ImGui::Selectable(BasebandSrc.GetDeviceNameC(i), isSelected)) {
                         if(running){
-                            tx = false;
+                            rx = false;
                             running = false;
-                            
-                            adc.stopStream();
-                            squeue.get()->close();
-                            
-                            thd.join();
 
+                            BasebandSrc.Stop();
+                            VoiceSrc.Stop();
                             basebandQueue.get()->close();
-                            if(!doBasebandCout){
-                                dac.stopStream();
-                            }
+                            
+                            thd.join(); 
+
+                            squeue.get()->close();
+                            BasebandSink.Stop();
+                            VoiceSink.Stop();
                         }
-                        if(i>0){
-                            doBasebandCout = false;
-                        }else{
-                            doBasebandCout = true;
-                        }
-                        if(!doBasebandCout){
-                            dac.closeStream();
-                            out_parameters.deviceId = out_device_ids[out_dev_id-1];
-                            dac.openStream( &out_parameters,  NULL, RTAUDIO_SINT16, out_sampleRate, &out_bufferFrames, &playback );
-                        }
+                        BasebandSrc.ChangeDevice(i);
                     }
 
                     // Set the initial focus when opening the combo
@@ -1462,6 +2068,73 @@ int main(int argc, char* argv[])
                 }
                 ImGui::EndCombo();
             }
+
+            ImGui::Text("Output Device [SPK]:");
+            menuWidth = ImGui::GetContentRegionAvail().x;
+            ImGui::SetNextItemWidth(menuWidth);
+            if (ImGui::BeginCombo("output_audio_0",VoiceSink.GetCurrentDeviceNameC())) {
+                for (int i = 0; i < VoiceSink.GetNumDevices(); ++i) {
+                    const bool isSelected = (VoiceSink.GetCurrentDeviceId() == i);
+                    if (ImGui::Selectable(VoiceSink.GetDeviceNameC(i), isSelected)) {
+                        if(running){
+                            rx = false;
+                            running = false;
+
+                            BasebandSrc.Stop();
+                            VoiceSrc.Stop();
+                            basebandQueue.get()->close();
+                            
+                            thd.join(); 
+
+                            squeue.get()->close();
+                            BasebandSink.Stop();
+                            VoiceSink.Stop();
+                        }
+                        VoiceSink.ChangeDevice(i);
+                    }
+
+                    // Set the initial focus when opening the combo
+                    // (scrolling + keyboard navigation focus)
+                    if (isSelected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+
+            ImGui::Text("Output Device [TX]:");
+            menuWidth = ImGui::GetContentRegionAvail().x;
+            ImGui::SetNextItemWidth(menuWidth);
+            if (ImGui::BeginCombo("output_audio_1",BasebandSink.GetCurrentDeviceNameC())) {
+                for (int i = 0; i < BasebandSink.GetNumDevices(); ++i) {
+                    const bool isSelected = (BasebandSink.GetCurrentDeviceId() == i);
+                    if (ImGui::Selectable(BasebandSink.GetDeviceNameC(i), isSelected)) {
+                        if(running){
+                            rx = false;
+                            running = false;
+
+                            BasebandSrc.Stop();
+                            VoiceSrc.Stop();
+                            basebandQueue.get()->close();
+                            
+                            thd.join(); 
+
+                            squeue.get()->close();
+                            BasebandSink.Stop();
+                            VoiceSink.Stop();
+                        }
+                        BasebandSink.ChangeDevice(i);
+                    }
+
+                    // Set the initial focus when opening the combo
+                    // (scrolling + keyboard navigation focus)
+                    if (isSelected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+
             ImGui::End();
         }
 
@@ -1491,18 +2164,18 @@ int main(int argc, char* argv[])
                         port_id = i;
 
                         if(running){
-                            tx = false;
+                            rx = false;
                             running = false;
                             
-                            adc.stopStream();
-                            squeue.get()->close();
-                            
-                            thd.join();
-
+                            BasebandSrc.Stop();
+                            VoiceSrc.Stop();
                             basebandQueue.get()->close();
-                            if(!doBasebandCout){
-                                dac.stopStream();
-                            }
+                            
+                            thd.join(); 
+
+                            squeue.get()->close();
+                            BasebandSink.Stop();
+                            VoiceSink.Stop();
 
                             if(rig_enabled && hasSerial){
                                 serial.closeDevice();
@@ -1514,7 +2187,11 @@ int main(int argc, char* argv[])
                             std::cerr << "Trying to open: " << Serialports[port_id] << "\n";
                             char errorOpening = serial.openDevice(Serialports[port_id].c_str(), 115200);
                             // If connection fails, return the error code otherwise, display a success message
-                            if (errorOpening!=1) std::cerr << "Error: " << errorOpening << "\n";
+                            if (errorOpening!=1){
+                                std::cerr << "Error: " << errorOpening << "\n";
+                            }else{
+                                std::cerr << "Serial: " << Serialports[port_id] << "Is open!\n";
+                            }
                             serial.RTS(false);
                             serial.DTR(false);
                         }
@@ -1598,15 +2275,15 @@ int main(int argc, char* argv[])
     if(running){
         running = false;
         
-        adc.stopStream();
-        squeue.get()->close();
-        
-        thd.join();
-
+        BasebandSrc.Stop();
+        VoiceSrc.Stop();
         basebandQueue.get()->close();
-        if(!doBasebandCout){
-            dac.stopStream();
-        }
+        
+        thd.join(); 
+
+        squeue.get()->close();
+        BasebandSink.Stop();
+        VoiceSink.Stop();
 
         if(rig_enabled){
             switch (ptt_id)
@@ -1627,10 +2304,26 @@ int main(int argc, char* argv[])
         }
     }
 
-    adc.closeStream();
-    if(!doBasebandCout){
-        dac.closeStream();
-    }
+    config->CKEY = std::string(buf);
+    config->source_address = std::string(str1);
+    config->destination_address = std::string(str2);
+    config->baud_id = baud_id;
+    config->ser_id = port_id;
+    config->ptt_id = ptt_id;
+
+    config->rig_enabled = rig_enabled;
+
+    config->dev_Gains[0] = g0;
+    config->dev_Gains[1] = g1;
+    config->dev_Gains[2] = g2;
+    config->dev_Gains[3] = g3;
+
+    config->dev_IDs[0] = BasebandSrc.GetCurrentDeviceId();
+    config->dev_IDs[1] = VoiceSrc.GetCurrentDeviceId();
+    config->dev_IDs[2] = VoiceSink.GetCurrentDeviceId();
+    config->dev_IDs[3] = BasebandSink.GetCurrentDeviceId();
+
+    saveConfig(fname,config);
 
     return EXIT_SUCCESS;
 }
