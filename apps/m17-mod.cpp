@@ -487,8 +487,8 @@ lsf_t send_lsf(const std::string& src, const std::string& dest, const FrameType 
     }
 	
 	if(enc_key){
-		//set enc bits 10 - AES
-		result[13] |= (1<<4);
+		//set enc bits 01 - AES
+		result[13] |= (1<<3);
 		
 		uint32_t timestamp = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 		uint32_t random_data[2] = {uint_dist(rng), uint_dist(rng)};

@@ -220,11 +220,51 @@ std::array<int8_t, N * 4> bytes_to_symbols(const std::array<T, N>& bytes)
 }
 
 template <size_t N>
+class FirFilter{
+public:
+    std::array<double,N> p_taps;
+    std::array<double,N*10> buf;
+    size_t bufIndex=0;
+    double out;
+    size_t F_FLT_LEN;
+
+    FirFilter(std::array<double,N>ftaps){
+        buf.fill(0);
+        std::copy(ftaps.begin(),ftaps.end(),p_taps.begin());
+        bufIndex=0;
+        F_FLT_LEN = N;
+    }
+
+    double process(int16_t input){
+        buf[bufIndex] = (double)input;
+        /* Increment buffer index and wrap around */
+        bufIndex++;
+        if(bufIndex == F_FLT_LEN){
+            bufIndex = 0;
+        }
+
+        /* Compute new sample via convolution */
+        out = 0.0f;
+        size_t sumIndex = bufIndex;
+        for (size_t n = 0; n < N; n++)
+        {
+            sumIndex --;
+            if(sumIndex < 1){
+                sumIndex = F_FLT_LEN - 1;
+            }
+            out += p_taps[n] * buf[sumIndex];
+        }
+        return out;
+    }
+};
+
+template <size_t N>
 std::array<int16_t, N*10> symbols_to_baseband(std::array<int8_t, N> symbols)
 {
     using namespace mobilinkd;
 
-    static BaseFirFilter<double, std::tuple_size<decltype(rrc_taps)>::value> rrc = makeFirFilter(rrc_taps);
+    //static BaseFirFilter<double, std::tuple_size<decltype(rrc_taps)>::value> rrc = makeFirFilter(rrc_taps);
+    static FirFilter<std::tuple_size<decltype(rrc_taps)>::value> rrc(rrc_taps);
 
     std::array<int16_t, N*10> baseband;
     baseband.fill(0);
@@ -235,7 +275,8 @@ std::array<int16_t, N*10> symbols_to_baseband(std::array<int8_t, N> symbols)
 
     for (auto& b : baseband)
     {
-        b = rrc(b) * 7168.0 * (invert ? -1.0 : 1.0);
+        //b = rrc(b) * 7168.0 * (invert ? -1.0 : 1.0);
+        b = rrc.process(b) * 7168.0 * (invert ? -1.0 : 1.0);
     }
 
     return baseband;
@@ -303,6 +344,7 @@ constexpr std::array<uint8_t, 2> EOT_SYNC = { 0x55, 0x5D };
 
 void output_eot()
 {
+    std::cerr << "Sending EOT." << std::endl;
     if (bitstream)
     {
         for (auto c : EOT_SYNC) std::cout << c;
@@ -310,12 +352,16 @@ void output_eot()
     }
     else
     {
-        std::array<int8_t, 48> out_symbols; // EOT symbols + FIR flush.
-        out_symbols.fill(0);
+        std::array<int8_t, 192> out_symbols; // EOT symbols + FIR flush.
         auto symbols = bytes_to_symbols(EOT_SYNC);
-        for (size_t i = 0; i != symbols.size(); ++i)
+        auto repeat = out_symbols.size()/symbols.size();
+        for (size_t j = 0; j < repeat; j++)
         {
-            out_symbols[i] = symbols[i];
+            auto offset = symbols.size()*j;
+            for (size_t i = 0; i < symbols.size(); i++)
+            {
+                out_symbols[offset+i] = symbols[i];
+            }
         }
         auto baseband = symbols_to_baseband(out_symbols);
         for (auto b : baseband) std::cout << uint8_t(b & 0xFF) << uint8_t(b >> 8);
@@ -585,220 +631,244 @@ struct M17_IP{
 /*
     Main M17RTXLink Class
 */
-class M17RTXLink
-{
-public:
-    // Default Address 127.0.0.1 Port 12711
-    M17RTXLink(std::string LocalAddress, unsigned short LocalPort);
-    void run();
-    int start();
+//class M17RTXLink
+//{
+//public:
+//    // Default Address 127.0.0.1 Port 12711
+//    M17RTXLink(std::string LocalAddress, unsigned short LocalPort);
+//    void run();
+//    int start();
+//
+//private:
+//    void transmit();
+//
+//    unsigned short port;
+//    std::string addr;
+//
+//    CUDPSocket*      m_socket;
+//
+//    sockaddr_storage m_sockaddr;
+//    unsigned int m_sockaddrLen;
+//
+//    M17_IP packet;
+//
+//    queue_t qPayload;
+//    lsf_t lsf;
+//    lich_t lich;
+//    uint8_t lich_segment;
+//    std::array<unsigned char, 64> command;
+//    bool timeout;
+//    std::chrono::steady_clock::time_point begin;
+//    std::chrono::steady_clock::time_point now;
+//    bool pttOn = false;
+//};
+//
+//// setup
+//M17RTXLink::M17RTXLink(std::string LocalAddress, unsigned short LocalPort){
+//    addr = LocalAddress;
+//    port = LocalPort;
+//}
+//
+//// helper func
+//uint16_t fromchar(unsigned char c1, unsigned char c2){
+//    return (((uint16_t)c1) << 8) | c2;
+//}
+//
+//void M17RTXLink::run(){
+//    sockaddr_storage sockaddr;
+//    unsigned int sockaddrLen = 0U;
+//
+//	//running = true;
+//    //std::thread thd;
+//	
+//	std::cerr << "M17RTXLink running. ctrl-D to break." << std::endl;
+//
+//    // Start LICH Construction
+//    lich_segment = 0;
+//    for (size_t i = 0; i != lich.size(); ++i)
+//    {
+//        std::array<uint8_t, 5> segment;
+//        std::copy(lsf.begin() + i * 5, lsf.begin() + (i + 1) * 5, segment.begin());
+//        auto lich_segment = make_lich_segment(segment, i);
+//        std::copy(lich_segment.begin(), lich_segment.end(), lich[i].begin());
+//    }
+//
+//    uint16_t frame_number = 0;
+//    codec_frame_t payload;
+//
+//    //auto audio_queue = std::make_shared<M17Modulator::audio_queue_t>();
+//    //auto bitstream_queue = std::make_shared<M17Modulator::bitstream_queue_t>();
+//
+//    // Main Loop
+//    while(1){
+//        std::fill(command.begin(),command.end(),'\0');
+//        // Read M17 IP Packets from M17 Gateway
+//        int ret = m_socket->read(&command[0], 64U, sockaddr, sockaddrLen);
+//		if (ret > 0) {
+//
+//            // Get MAGIC 
+//            std::copy(command.begin(),command.begin()+4,packet.MAGIC.begin());
+//            int magic = (uint32_t)packet.MAGIC[0] << 24 | (uint32_t)packet.MAGIC[1] << 16 | (uint32_t)packet.MAGIC[2] << 8  | (uint32_t)packet.MAGIC[3];
+//
+//            if(mdebug){
+//			    std::cerr << "[DEBUG] MAGIC: " << std::string(packet.MAGIC.begin(),packet.MAGIC.end()) << "\n";
+//            }
+//            
+//            // Check Magic "M17 "
+//            if(magic == 0x4d313720){
+//
+//                packet.FN =  fromchar(command[34],command[35]); // FRAME NUMBER
+//
+//                std::copy(command.begin()+36,command.begin()+36+16,packet.Payload.begin()); // CODEC2 PAYLOAD
+//
+//                if(packet.FN == 0x00){
+//
+//                    packet.SID = fromchar(command[4],command[5]);   // SID (not used...)
+//                    
+//                    // Swap DST->SRC
+//                    std::copy(command.begin()+6,command.begin()+6+28,packet.LICH.begin());
+//                    for(int8_t i=0; i<6; i++){
+//                        std::swap(packet.LICH[i],packet.LICH[6+i]);
+//                    }
+//                    
+//                    // Decode SRC Callsign
+//                    mobilinkd::LinkSetupFrame::encoded_call_t encoded_src = {0x00,0x00,0x00,0x00,0x00,0x00};
+//                    std::copy(packet.LICH.begin(), packet.LICH.begin()+6, encoded_src.begin());
+//                    auto src = mobilinkd::LinkSetupFrame::decode_callsign(encoded_src);
+//
+//                    // Encode SRC Callsign
+//                    mobilinkd::LinkSetupFrame::encoded_call_t encoded_dst {0x00,0x00,0x00,0x00,0x00,0x00};
+//                    std::copy(packet.LICH.begin()+6, packet.LICH.begin()+12, encoded_dst.begin());
+//                    auto dst = mobilinkd::LinkSetupFrame::decode_callsign(encoded_dst);
+//                
+//                    if(mdebug){
+//                        std::cerr << "[DEBUG] FN: " << packet.FN << " SRC: " << std::string(src.begin(), src.end()) << " DST: " << std::string(dst.begin(), dst.end()) << "\n";
+//                    }
+//					
+//					if(has_ptt){
+//                        std::cerr << "\r\nPTT: ON \n";			
+//						system(ptt_on.c_str());
+//						pttOn = true;
+//					}
+//                    
+//                    //send_preamble();
+//                    //lsf = send_lsf(std::string(src.begin(), src.end()),std::string(dst.begin(), dst.end()));
+//                    /*
+//                    lich_segment = 0;
+//                    for (size_t i = 0; i != lich.size(); ++i)
+//                    {
+//                        std::array<uint8_t, 5> segment;
+//                        std::copy(lsf.begin() + i * 5, lsf.begin() + (i + 1) * 5, segment.begin());
+//                        auto lich_segment = make_lich_segment(segment, i);
+//                        std::copy(lich_segment.begin(), lich_segment.end(), lich[i].begin());
+//                    }*/
+//                    //frame_number = 0;
+//
+//                    //thd = std::thread(&M17RTXLink::transmit,this);
+//                }
+//                begin = std::chrono::steady_clock::now();
+//                std::copy(packet.Payload.begin(),packet.Payload.end(),payload.begin());
+//
+//                for (auto &sample : payload)
+//                {
+//                    audio_queue->put(sample, 5s);
+//                }
+//                
+//                //auto data = make_data_frame(frame_number++, payload);
+//
+//                //send_audio_frame(lich[lich_segment++], data);
+//
+//                if (lich_segment == lich.size()) lich_segment = 0;
+//
+//                //if (!qPayload.put(payload, std::chrono::seconds(300))){ std::cerr << "QUEUE FULL BREAK\n"; break;} 
+//                if((packet.FN & 0x8000)){ // Last frame
+//                    running = false;
+//                    //data = make_data_frame(0x8000, payload);
+//                    //send_audio_frame(lich[lich_segment], data);
+//                    //output_eot();
+//					if(has_ptt){
+//                        std::cerr << "\r\nPTT: OFF \n";	
+//						system(ptt_off.c_str());
+//						pttOn = false;
+//                    }
+//                    //frame_number = 0;
+//                }
+//            }
+//        }else{
+//            if(pttOn && has_ptt){
+//                now = std::chrono::steady_clock::now();
+//                auto time = std::chrono::duration_cast<std::chrono::milliseconds>(now - begin).count();
+//                if(time>1000){
+//                    std::cerr << "\r\n[timeout] PTT: OFF \n";			
+//                    system(ptt_off.c_str());
+//                    pttOn = false;
+//                    begin = std::chrono::steady_clock::now();
+//                    std::cerr << "Elapsed(ms)=" << time << std::endl;
+//                }
+//            }
+//        }
+//    }
+//    //thd.join();
+//    //qPayload.close();
+//}
+//
+//int M17RTXLink::start(){
+//    int ret;
+//    CUDPSocket::startup();
+//
+//    if (CUDPSocket::lookup(addr, port, m_sockaddr, m_sockaddrLen) != 0) {
+//		LogError("Could not lookup the address");
+//		::LogFinalise();
+//		return 1;
+//	}
+//
+//	m_socket = new CUDPSocket(addr, port);
+//	ret = m_socket->open();
+//	if (!ret) {
+//		LogError("Unable to open the link socket");
+//		::LogFinalise();
+//		return 1;
+//	}
+//
+//    std::fill(command.begin(),command.end(),'\0');
+//
+//    return ret;
+//}
+//
+//void M17RTXLink::transmit()
+//{
+//    using namespace mobilinkd;
+//
+//    assert(running);
+//
+//    uint16_t frame_number = 0;
+//
+//    codec_frame_t payload;
+//
+//    std::cerr << "Transmit Thread started.\n";
+//    
+//    while(!qPayload.is_closed() && qPayload.empty()) std::this_thread::yield();
+//    while (!qPayload.is_closed())
+//    {
+//        if(pttOn){
+//            qPayload.get(payload, std::chrono::milliseconds(300));
+//            auto data = make_data_frame(frame_number++, payload);
+//            send_audio_frame(lich[lich_segment++], data);
+//            if (lich_segment == lich.size()) lich_segment = 0;
+//        }
+//    }
+//
+//    std::cerr << "Transmit Thread ended.\n";
+//}
 
-private:
-    void transmit();
-
-    unsigned short port;
-    std::string addr;
-
-    CUDPSocket*      m_socket;
-
-    sockaddr_storage m_sockaddr;
-    unsigned int m_sockaddrLen;
-
-    M17_IP packet;
-
-    queue_t qPayload;
-    lsf_t lsf;
-    lich_t lich;
-    uint8_t lich_segment;
-    std::array<unsigned char, 64> command;
-    bool timeout;
-    std::chrono::steady_clock::time_point begin;
-    std::chrono::steady_clock::time_point now;
-    bool pttOn = false;
-};
-
-// setup
-M17RTXLink::M17RTXLink(std::string LocalAddress, unsigned short LocalPort){
-    addr = LocalAddress;
-    port = LocalPort;
-}
-
-// helper func
 uint16_t fromchar(unsigned char c1, unsigned char c2){
     return (((uint16_t)c1) << 8) | c2;
-}
-
-void M17RTXLink::run(){
-    sockaddr_storage sockaddr;
-    unsigned int sockaddrLen = 0U;
-
-	running = true;
-    std::thread thd(&M17RTXLink::transmit,this);
-	
-	std::cerr << "M17RTXLink running. ctrl-D to break." << std::endl;
-
-    // Start LICH Construction
-    lich_segment = 0;
-    for (size_t i = 0; i != lich.size(); ++i)
-    {
-        std::array<uint8_t, 5> segment;
-        std::copy(lsf.begin() + i * 5, lsf.begin() + (i + 1) * 5, segment.begin());
-        auto lich_segment = make_lich_segment(segment, i);
-        std::copy(lich_segment.begin(), lich_segment.end(), lich[i].begin());
-    }
-
-    // Main Loop
-    while(1){
-        std::fill(command.begin(),command.end(),'\0');
-        // Read M17 IP Packets from M17 Gateway
-        int ret = m_socket->read(&command[0], 64U, sockaddr, sockaddrLen);
-		if (ret > 0) {
-
-            // Get MAGIC 
-            std::copy(command.begin(),command.begin()+4,packet.MAGIC.begin());
-            int magic = (uint32_t)packet.MAGIC[0] << 24 | (uint32_t)packet.MAGIC[1] << 16 | (uint32_t)packet.MAGIC[2] << 8  | (uint32_t)packet.MAGIC[3];
-
-            if(mdebug){
-			    std::cerr << "[DEBUG] MAGIC: " << std::string(packet.MAGIC.begin(),packet.MAGIC.end()) << "\n";
-            }
-            
-            // Check Magic "M17 "
-            if(magic == 0x4d313720){
-
-                packet.FN =  fromchar(command[34],command[35]); // FRAME NUMBER
-
-                std::copy(command.begin()+36,command.begin()+36+16,packet.Payload.begin()); // CODEC2 PAYLOAD
-				
-                if((packet.FN & 0x8000)){
-					if(has_ptt){
-                        std::cerr << "\r\nPTT: OFF \n";	
-						system(ptt_off.c_str());
-						pttOn = false;
-					}
-                }
-
-                if(packet.FN == 0x00){
-
-                    packet.SID = fromchar(command[4],command[5]);   // SID (not used...)
-                    
-                    // Make LSF & Swap DST->SRC
-                    std::copy(command.begin()+6,command.begin()+6+28,packet.LICH.begin());
-                    for(int8_t i=0; i<6; i++){
-                        std::swap(packet.LICH[i],packet.LICH[6+i]);
-                    }
-                    
-                    // Decode SRC Callsign
-                    mobilinkd::LinkSetupFrame::encoded_call_t encoded_src = {0x00,0x00,0x00,0x00,0x00,0x00};
-                    std::copy(packet.LICH.begin(), packet.LICH.begin()+6, encoded_src.begin());
-                    auto src = mobilinkd::LinkSetupFrame::decode_callsign(encoded_src);
-
-                    // Encode SRC Callsign
-                    mobilinkd::LinkSetupFrame::encoded_call_t encoded_dst {0x00,0x00,0x00,0x00,0x00,0x00};
-                    std::copy(packet.LICH.begin()+6, packet.LICH.begin()+12, encoded_dst.begin());
-                    auto dst = mobilinkd::LinkSetupFrame::decode_callsign(encoded_dst);
-                
-                    if(mdebug){
-                        std::cerr << "[DEBUG] FN: " << packet.FN << " SRC: " << std::string(src.begin(), src.end()) << " DST: " << std::string(dst.begin(), dst.end()) << "\n";
-                    }
-					
-					if(has_ptt){
-                        std::cerr << "\r\nPTT: ON \n";			
-						system(ptt_on.c_str());
-						pttOn = true;
-					}
-                    
-                    send_preamble();
-                    lsf = send_lsf(std::string(src.begin(), src.end()),std::string(dst.begin(), dst.end()));
-
-                    lich_segment = 0;
-                    for (size_t i = 0; i != lich.size(); ++i)
-                    {
-                        std::array<uint8_t, 5> segment;
-                        std::copy(lsf.begin() + i * 5, lsf.begin() + (i + 1) * 5, segment.begin());
-                        auto lich_segment = make_lich_segment(segment, i);
-                        std::copy(lich_segment.begin(), lich_segment.end(), lich[i].begin());
-                    }
-                }
-                begin = std::chrono::steady_clock::now();
-                codec_frame_t payload;
-                std::copy(packet.Payload.begin(),packet.Payload.end(),payload.begin());
-                if (!qPayload.put(payload, std::chrono::seconds(300))){ std::cerr << "QUEUE FULL BREAK\n"; break;} 
-            }
-        }else{
-            if(pttOn && has_ptt){
-                now = std::chrono::steady_clock::now();
-                auto time = std::chrono::duration_cast<std::chrono::milliseconds>(now - begin).count();
-                if(time>1000){
-                    std::cerr << "\r\n[timeout] PTT: OFF \n";			
-                    system(ptt_off.c_str());
-                    pttOn = false;
-                    begin = std::chrono::steady_clock::now();
-                    std::cerr << "Elapsed(ms)=" << time << std::endl;
-                }
-            }
-        }
-    }
-
-    thd.join();
-    qPayload.close();
-}
-
-int M17RTXLink::start(){
-    int ret;
-    CUDPSocket::startup();
-
-    if (CUDPSocket::lookup(addr, port, m_sockaddr, m_sockaddrLen) != 0) {
-		LogError("Could not lookup the address");
-		::LogFinalise();
-		return 1;
-	}
-
-	m_socket = new CUDPSocket(addr, port);
-	ret = m_socket->open();
-	if (!ret) {
-		LogError("Unable to open the link socket");
-		::LogFinalise();
-		return 1;
-	}
-
-    std::fill(command.begin(),command.end(),'\0');
-
-    return ret;
-}
-
-void M17RTXLink::transmit()
-{
-    using namespace mobilinkd;
-
-    assert(running);
-
-    uint16_t frame_number = 0;
-
-    codec_frame_t payload;
-
-    while(!qPayload.is_closed() && qPayload.empty()) std::this_thread::yield();
-    while (!qPayload.is_closed())
-    {
-        if(pttOn){
-            qPayload.get(payload, std::chrono::milliseconds(300));
-            auto data = make_data_frame(frame_number++, payload);
-            if (frame_number == 0x8000){
-                frame_number = 0;
-                // Last frame
-                data = make_data_frame(frame_number | 0x8000, payload);
-                send_audio_frame(lich[lich_segment], data);
-                output_eot();
-            } 
-            send_audio_frame(lich[lich_segment++], data);
-            if (lich_segment == lich.size()) lich_segment = 0;
-        }
-    }
-
 }
 
 int main(int argc, char* argv[])
 {
     using namespace mobilinkd;
+    using namespace std::chrono_literals;
 	
 #ifdef WIN32
 	// Set "stdin" to have binary mode:
@@ -824,16 +894,182 @@ int main(int argc, char* argv[])
     can = config->can;
     mdebug = config ->debug;
 
-    std::string addr = config->addr;
-    unsigned short port = config->port;
+    std::string addr("127.0.0.1") ; //config->addr;
+    unsigned short port = 17011;//config->port;
 	
 	has_ptt = config->action_ptt;
 	ptt_on = config->tx_on_cmd;
 	ptt_off = config->tx_off_cmd;
 
+    /*
     int res;
     M17RTXLink glink(std::string("127.0.0.1"),(unsigned short)17011);
     res = glink.start();
     glink.run();
     return res;
+    */
+
+    auto audio_queue = std::make_shared<M17Modulator::audio_queue_t>();
+    auto bitstream_queue = std::make_shared<M17Modulator::bitstream_queue_t>();
+
+    M17Modulator modulator("ABCDEF", "ALL");
+    auto future = modulator.run(audio_queue, bitstream_queue);
+
+    std::cerr << "m17-mod running. ctrl-D to break." << std::endl;
+
+    M17Modulator::bitstream_t bitstream;
+    uint8_t bits;
+    size_t index = 0;
+    std::atomic<bool> pttOn = false;
+
+    running = true;
+
+    std::thread thd([audio_queue, addr, port, &modulator, &pttOn](){
+        sockaddr_storage sockaddr;
+        unsigned int sockaddrLen = 0U;
+        uint16_t frame_number = 0;
+        codec_frame_t payload;
+        std::array<unsigned char, 64> command;
+        M17_IP packet;
+
+        bool timeout;
+        std::chrono::steady_clock::time_point begin;
+        std::chrono::steady_clock::time_point now;
+
+        std::cerr << "START\n";
+
+        CUDPSocket*      m_socket;
+        sockaddr_storage m_sockaddr;
+        unsigned int m_sockaddrLen;
+
+        int ret;
+        CUDPSocket::startup();
+
+        if (CUDPSocket::lookup(addr, port, m_sockaddr, m_sockaddrLen) != 0) {
+            LogError("Could not lookup the address");
+            ::LogFinalise();
+            return 1;
+        }
+
+        m_socket = new CUDPSocket(addr, port);
+        ret = m_socket->open();
+        if (!ret) {
+            LogError("Unable to open the link socket");
+            ::LogFinalise();
+            return 1;
+        }
+
+        std::fill(command.begin(),command.end(),'\0');
+        while (1)
+        {
+            std::fill(command.begin(),command.end(),'\0');
+            // Read M17 IP Packets from M17 Gateway
+            ret = m_socket->read(&command[0], 64U, sockaddr, sockaddrLen);
+            if (ret > 0) {
+                // Get MAGIC 
+                std::copy(command.begin(),command.begin()+4,packet.MAGIC.begin());
+                int magic = (uint32_t)packet.MAGIC[0] << 24 | (uint32_t)packet.MAGIC[1] << 16 | (uint32_t)packet.MAGIC[2] << 8  | (uint32_t)packet.MAGIC[3];
+
+                if(mdebug){
+                    std::cerr << "[DEBUG] MAGIC: " << std::string(packet.MAGIC.begin(),packet.MAGIC.end()) << "\n";
+                }
+                
+                // Check Magic "M17 "
+                if(magic == 0x4d313720){
+
+                    packet.FN =  fromchar(command[34],command[35]); // FRAME NUMBER
+                    std::copy(command.begin()+36,command.begin()+36+16,packet.Payload.begin()); // CODEC2 PAYLOAD
+                    if(packet.FN == 0x00){
+                        packet.SID = fromchar(command[4],command[5]);   // SID (not used...)
+                        // Swap DST->SRC
+                        std::copy(command.begin()+6,command.begin()+6+28,packet.LICH.begin());
+                        for(int8_t i=0; i<6; i++){
+                            std::swap(packet.LICH[i],packet.LICH[6+i]);
+                        }
+                        // Decode SRC Callsign
+                        mobilinkd::LinkSetupFrame::encoded_call_t encoded_src = {0x00,0x00,0x00,0x00,0x00,0x00};
+                        std::copy(packet.LICH.begin(), packet.LICH.begin()+6, encoded_src.begin());
+                        auto src = mobilinkd::LinkSetupFrame::decode_callsign(encoded_src);
+
+                        // Encode SRC Callsign
+                        mobilinkd::LinkSetupFrame::encoded_call_t encoded_dst {0x00,0x00,0x00,0x00,0x00,0x00};
+                        std::copy(packet.LICH.begin()+6, packet.LICH.begin()+12, encoded_dst.begin());
+                        auto dst = mobilinkd::LinkSetupFrame::decode_callsign(encoded_dst);
+
+                        if(mdebug){
+                            std::cerr << "[DEBUG] FN: " << packet.FN << " SRC: " << std::string(src.begin(), src.end()) << " DST: " << std::string(dst.begin(), dst.end()) << "\n";
+                        }
+                        
+                        if(has_ptt){
+                            std::cerr << "\r\nPTT: ON \n";			
+                            system(ptt_on.c_str());
+                            pttOn = true;
+                        }
+
+                        modulator.source(std::string(src.begin(), src.end()));
+                        modulator.dest(std::string(dst.begin(), dst.end()));
+                        modulator.ptt_on();
+                    }
+                    begin = std::chrono::steady_clock::now();
+                    //std::copy(packet.Payload.begin(),packet.Payload.end(),payload.begin());
+                    for (size_t i = 0; i < packet.Payload.size(); i++)
+                    {
+                        int16_t sample = packet.Payload[i];
+                        audio_queue->put(sample, 5s);
+                    }
+
+                    if(packet.FN & 0x8000){ // Last frame
+                        modulator.ptt_off();
+                        if(has_ptt){
+                            std::cerr << "\r\nPTT: OFF \n";	
+                            system(ptt_off.c_str());
+                            pttOn = false;
+                        }
+                    }
+                }else{
+                    if(pttOn && has_ptt){
+                        now = std::chrono::steady_clock::now();
+                        auto time = std::chrono::duration_cast<std::chrono::milliseconds>(now - begin).count();
+                        if(time>1000){
+                            std::cerr << "\r\n[timeout] PTT: OFF \n";			
+                            system(ptt_off.c_str());
+                            pttOn = false;
+                            begin = std::chrono::steady_clock::now();
+                            std::cerr << "Elapsed(ms)=" << time << std::endl;
+                        }
+                    }
+                }
+            }   
+        }
+    });
+
+    //while (!pttOn || bitstream_queue->is_closed()) std::this_thread::yield();
+
+    // Input must be 8000 SPS, 16-bit LE, 1 channel raw audio.
+    while (1)
+    {
+        if (bitstream_queue->get(bits, 1s))
+        {
+            bitstream[index++] = bits;
+            if (index == bitstream.size())
+            {
+                auto baseband = M17Modulator::symbols_to_baseband(M17Modulator::bytes_to_symbols(bitstream));
+                for (auto b : baseband) std::cout << uint8_t((b & 0xFF00) >> 8) << uint8_t(b & 0xFF);
+                std::cout.flush();
+            }
+        }
+    }
+
+    std::clog << "No longer running" << std::endl;
+
+    //running = false;
+    //modulator.ptt_off();
+    thd.join();
+    modulator.wait_until_idle();
+    audio_queue->close();
+    future.get();
+    bitstream_queue->close();
+
+    return EXIT_SUCCESS;
+   
 }

@@ -668,6 +668,12 @@ struct Config
 	
 	bool encrypt = false; //Default is no Encryption
 	std::string CKEY; //AES Key
+    unsigned int dev_IDs[4] = {0u, 0u, 0u, 0u};
+    float dev_Gains[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    bool rig_enabled = false;
+    int ser_id = 0;
+    int baud_id = 0;
+    int ptt_id = 1;
 
     static std::optional<Config> parse(int argc, char* argv[])
     {
@@ -1015,8 +1021,8 @@ lsf_t send_lsf(const std::string& src, const std::string& dest, const FrameType 
     }
 	
 	if(enc_key){
-		//set enc bits 10 - AES
-		result[13] |= (1<<4);
+		//set enc bits 01 - AES
+		result[13] |= (1<<3);
 		
 		uint32_t timestamp = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 		uint32_t random_data[2] = {uint_dist(rng), uint_dist(rng)};
@@ -1436,34 +1442,95 @@ void func(std::shared_ptr<queue_t>& queue){
     }
 }
 
-void SaveDevices(const std::string& filename, const std::vector<uint32_t>& numbers) {
-    std::ofstream outputFile(filename, std::ios::binary);
-    if (!outputFile) {
-        std::cerr << "Failed to open file for writing: " << filename << std::endl;
-        return;
-    }
+void saveConfig(const std::string& filename, std::optional<Config>& config) {
+    std::ofstream file(filename);
+    if (file.is_open()) {
+        file << config->source_address << std::endl;
+        file << config->destination_address << std::endl;
+        file << config->audio_device << std::endl;
+        file << config->event_device << std::endl;
+        file << config->tx_on_cmd << std::endl;
+        file << config->tx_off_cmd << std::endl;
+        file << config->action_ptt << std::endl;
+        file << config->key << std::endl;
+        file << config->verbose << std::endl;
+        file << config->debug << std::endl;
+        file << config->quiet << std::endl;
+        file << config->invert << std::endl;
+        file << config->lsf << std::endl;
+        file << config->noise_blanker << std::endl;
+        file << config->bin << std::endl;
+        file << config->sym << std::endl;
+        file << config->rrc << std::endl;
+        file << config->bert << std::endl;
+        file << config->can << std::endl;
+        file << config->encrypt << std::endl;
+        file << config->CKEY << std::endl;
+        file << config->dev_IDs[0] << std::endl;
+        file << config->dev_IDs[1] << std::endl;
+        file << config->dev_IDs[2] << std::endl;
+        file << config->dev_IDs[3] << std::endl;
+        file << config->dev_Gains[0] << std::endl;
+        file << config->dev_Gains[1] << std::endl;
+        file << config->dev_Gains[2] << std::endl;
+        file << config->dev_Gains[3] << std::endl;
+        file << config->rig_enabled << std::endl;
+        file << config->ser_id << std::endl;
+        file << config->baud_id << std::endl;
+        file << config->ptt_id << std::endl;
 
-    for (const uint32_t number : numbers) {
-        outputFile.write(reinterpret_cast<const char*>(&number), sizeof(uint32_t));
+        file.close();
+    } else {
+        std::cerr << "Unable to open file for writing." << std::endl;
     }
-
-    outputFile.close();
 }
 
-// Function to read integers from a file
-bool readDevices(const std::string& filename, std::vector<uint32_t>& numbers) {
-    std::ifstream inputFile(filename, std::ios::binary);
-    if (!inputFile) {
+bool readConfig(const std::string& filename, std::optional<Config>& config) {
+    std::ifstream file(filename);
+    if (file.is_open()) {
+        std::string line;
+
+        // Read each line and assign it to the corresponding member of the Config struct
+        std::getline(file, config->source_address);
+        std::getline(file, config->destination_address);
+        std::getline(file, config->audio_device);
+        std::getline(file, config->event_device);
+        std::getline(file, config->tx_on_cmd);
+        std::getline(file, config->tx_off_cmd);
+        file >> config->action_ptt;
+        file >> config->key;
+        file >> config->verbose;
+        file >> config->debug;
+        file >> config->quiet;
+        file >> config->invert;
+        file >> config->lsf;
+        file >> config->noise_blanker;
+        file >> config->bin;
+        file >> config->sym;
+        file >> config->rrc;
+        file >> config->bert;
+        file >> config->can;
+        file >> config->encrypt;
+        std::getline(file >> std::ws, config->CKEY); // Read the remaining part of the line (including spaces)
+        file >>  config->dev_IDs[0];
+        file >>  config->dev_IDs[1];
+        file >>  config->dev_IDs[2];
+        file >>  config->dev_IDs[3];
+        file >>  config->dev_Gains[0];
+        file >>  config->dev_Gains[1];
+        file >>  config->dev_Gains[2];
+        file >>  config->dev_Gains[3];
+        file >>  config->rig_enabled;
+        file >>  config->ser_id;
+        file >>  config->baud_id;
+        file >>  config->ptt_id;
+
+        file.close();
+        return true;
+    } else {
+        std::cerr << "Unable to open file for reading." << std::endl;
         return false;
     }
-
-    uint32_t number;
-    while (inputFile.read(reinterpret_cast<char*>(&number), sizeof(uint32_t))) {
-        numbers.push_back(number);
-    }
-
-    inputFile.close();
-    return true;
 }
 
 int main(int argc, char* argv[])
@@ -1475,11 +1542,18 @@ int main(int argc, char* argv[])
 
     (*pdemod).diagnostics(diagnostic_callback<float>);
 
-    display_lsf = true ;//config->lsf;
+    std::string fname("config.ini");
+    if(!readConfig(fname,config)){
+        std::cerr << "No default cfg loaded.\n";
+        config->lsf = true;
+        config->debug = true;
+    }
+
+    display_lsf = config->lsf;
     invert_input = config->invert;
     invert = config->invert;
     quiet = config->quiet;
-    debug = true;//config->debug;
+    debug = config->debug;
     noise_blanker = config->noise_blanker;
 	enc_key = config->encrypt;
 
@@ -1594,48 +1668,23 @@ int main(int argc, char* argv[])
 
     bool rx = false;
     bool tx = false;
-    bool rig_enabled = 0;
+    bool rig_enabled = config->rig_enabled;
 
     static char str1[8] = "";
     static char str2[8] = "ALL";
     static char buf[128] = "";
 
+    std::copy(config->source_address.begin(),config->source_address.end(),&str1[0]);
+    std::copy(config->destination_address.begin(),config->destination_address.end(),&str2[0]);
+    std::copy(config->CKEY.begin(),config->CKEY.end(),&buf[0]);
+
     std::string ptt[2] = {"OFF","ON"};
 
-    std::string fname("config.ini");
-    std::vector<uint32_t> devs;
-    std::vector<float> gains;
-    std::string callsign(str1);
-    if(!readDevices(fname,devs)){
-        std::cerr << "No default cfg loaded.\n";
-        devs.push_back(0);
-        devs.push_back(0);
-        devs.push_back(0);
-        devs.push_back(0);
+    AudioSource BasebandSrc(48000u, 1920u, config->dev_IDs[0]);
+    AudioSource VoiceSrc(8000u, 320u, config->dev_IDs[1]);
 
-        gains.push_back(1.0f);
-        gains.push_back(1.0f);
-        gains.push_back(1.0f);
-        gains.push_back(1.0f);
-
-        rig_enabled = false;
-    }else{
-        gains.push_back(reinterpret_cast<float&>(devs[4]));
-        gains.push_back(reinterpret_cast<float&>(devs[5]));
-        gains.push_back(reinterpret_cast<float&>(devs[6]));
-        gains.push_back(reinterpret_cast<float&>(devs[7]));
-
-        rig_enabled = reinterpret_cast<bool&>(devs[8]);
-
-        std::copy(devs.begin()+9,devs.end(),std::back_inserter(callsign));
-        std::copy(callsign.begin(),callsign.end(),&str1[0]);
-    }
-
-    AudioSource BasebandSrc(48000u, 1920u, devs[0]);
-    AudioSource VoiceSrc(8000u, 320u, devs[1]);
-
-    AudioSink VoiceSink(8000u, 320u, devs[2]);
-    AudioSink BasebandSink(48000u, 64u, devs[3]);
+    AudioSink VoiceSink(8000u, 320u, config->dev_IDs[2]);
+    AudioSink BasebandSink(48000u, 64u, config->dev_IDs[3]);
 
     BasebandSrc.SetCallback(&record);
     VoiceSrc.SetCallback(&record);
@@ -1651,7 +1700,7 @@ int main(int argc, char* argv[])
     serialib serial;
     bool hasSerial = false;
     std::vector<std::string> Serialports = get_available_ports(serial);
-    int port_id = 0;
+    int port_id = config->ser_id;
 
     if(Serialports.size() == 0){
         std::cerr << "No serial ports found.\n";
@@ -1661,18 +1710,31 @@ int main(int argc, char* argv[])
     }
 
     std::vector<int> Serialbaud = {115200};
-    int baud_id = 0;
+    int baud_id = config->baud_id;
 
     std::vector<std::string> Serialptt = {"DTR","RTS"};
-    int ptt_id = 1;
+    int ptt_id = config->ptt_id;
+
+    if(rig_enabled && hasSerial){
+        std::cerr << "Trying to open: " << Serialports[port_id] << "\n";
+        char errorOpening = serial.openDevice(Serialports[port_id].c_str(), 115200);
+        // If connection fails, return the error code otherwise, display a success message
+        if (errorOpening!=1){
+            std::cerr << "Error: " << errorOpening << "\n";
+        }else{
+            std::cerr << "Serial: " << Serialports[port_id] << "Is open!\n";
+        }
+        serial.RTS(false);
+        serial.DTR(false);
+    }
 
     bool StartRx=false;
     bool StopRx=false;
 
-    float g0 = gains[0];
-    float g1 = gains[1];
-    float g2 = gains[2];
-    float g3 = gains[3];
+    float g0 = config->dev_Gains[0];
+    float g1 = config->dev_Gains[1];
+    float g2 = config->dev_Gains[2];
+    float g3 = config->dev_Gains[3];
 
     tx_out_gain = &g3;
     tx_mic_gain = &g0;
@@ -1730,7 +1792,6 @@ int main(int argc, char* argv[])
                 config->source_address = std::string(str1);
                 config->destination_address = std::string(str2);
                 if(config->source_address.length()>2){
-                    callsign = config->source_address;
                     if(StopRx){
                         StopRx=false;
                     }
@@ -2126,7 +2187,11 @@ int main(int argc, char* argv[])
                             std::cerr << "Trying to open: " << Serialports[port_id] << "\n";
                             char errorOpening = serial.openDevice(Serialports[port_id].c_str(), 115200);
                             // If connection fails, return the error code otherwise, display a success message
-                            if (errorOpening!=1) std::cerr << "Error: " << errorOpening << "\n";
+                            if (errorOpening!=1){
+                                std::cerr << "Error: " << errorOpening << "\n";
+                            }else{
+                                std::cerr << "Serial: " << Serialports[port_id] << "Is open!\n";
+                            }
                             serial.RTS(false);
                             serial.DTR(false);
                         }
@@ -2239,22 +2304,26 @@ int main(int argc, char* argv[])
         }
     }
 
-    devs.clear();
-    devs.push_back(BasebandSrc.GetCurrentDeviceId());
-    devs.push_back(VoiceSrc.GetCurrentDeviceId());
-    devs.push_back(VoiceSink.GetCurrentDeviceId());
-    devs.push_back(BasebandSink.GetCurrentDeviceId());
+    config->CKEY = std::string(buf);
+    config->source_address = std::string(str1);
+    config->destination_address = std::string(str2);
+    config->baud_id = baud_id;
+    config->ser_id = port_id;
+    config->ptt_id = ptt_id;
 
-    devs.push_back(reinterpret_cast<uint32_t&>(g0));
-    devs.push_back(reinterpret_cast<uint32_t&>(g1));
-    devs.push_back(reinterpret_cast<uint32_t&>(g2));
-    devs.push_back(reinterpret_cast<uint32_t&>(g3));
+    config->rig_enabled = rig_enabled;
 
-    devs.push_back(reinterpret_cast<uint32_t&>(rig_enabled));
-    
-    std::copy(callsign.begin(),callsign.end(),std::back_inserter(devs));
+    config->dev_Gains[0] = g0;
+    config->dev_Gains[1] = g1;
+    config->dev_Gains[2] = g2;
+    config->dev_Gains[3] = g3;
 
-    SaveDevices("config.ini",devs);
+    config->dev_IDs[0] = BasebandSrc.GetCurrentDeviceId();
+    config->dev_IDs[1] = VoiceSrc.GetCurrentDeviceId();
+    config->dev_IDs[2] = VoiceSink.GetCurrentDeviceId();
+    config->dev_IDs[3] = BasebandSink.GetCurrentDeviceId();
+
+    saveConfig(fname,config);
 
     return EXIT_SUCCESS;
 }
