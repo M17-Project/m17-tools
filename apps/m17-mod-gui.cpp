@@ -1575,13 +1575,10 @@ int main(int argc, char* argv[])
 	ptt_off = config->tx_off_cmd;
 
     can = config->can;
-	if(enc_key){
+	if(enc_key  && config->CKEY.length()%2==0){
         std::string hash = boost::algorithm::unhex(config->CKEY);
         std::copy(hash.begin(), hash.end(), Key);
         switch(config->CKEY.length()/2){
-			default:
-				std::cerr << "No encryption." << std::endl;
-				break;
 			case 16:
 				#define AES128 1
 				std::cerr << "AES 128 KEY." << std::endl;
@@ -1596,6 +1593,9 @@ int main(int argc, char* argv[])
 				break;
 		}
     }else{
+        std::cerr << "No encryption." << std::endl;
+        enc_key = false;
+        config->encrypt = false;
         config->CKEY = std::string("");
     }
 
@@ -1809,7 +1809,27 @@ int main(int argc, char* argv[])
 	            config->can = std::min<int>(15,std::max<int>(0,config->can));
             ImGui::Checkbox("Invert Polarity", &config->invert);
             ImGui::Checkbox("Encrypt", &config->encrypt);
-            ImGui::InputText("AES Key", buf, 128, ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
+            ImGui::InputText("AES Key", buf, 65, ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
+
+            if(config->encrypt){
+                size_t m_len = strlen(buf);
+                switch (m_len)
+                {
+                case 32:
+                    break;
+
+                case 48:
+                    break;
+
+                case 64:
+                    break;
+                
+                default:
+                    config->encrypt = false;
+                    std::cerr << "Key size must be 32, 48 or 64 bytes\n";
+                    break;
+                }
+            }
 
             if(tx){
                 ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
@@ -1847,6 +1867,21 @@ int main(int argc, char* argv[])
                         config->CKEY = std::string(buf);
                         std::string hash = boost::algorithm::unhex(config->CKEY);
                         std::copy(hash.begin(), hash.end(), Key);
+
+                         switch(config->CKEY.length()/2){
+                            case 16:
+                                #define AES128 1
+                                std::cerr << "AES 128 KEY." << std::endl;
+                                break;
+                            case 24:
+                                #define AES192 1
+                                std::cerr << "AES 192 KEY." << std::endl;
+                                break;
+                            case 32:
+                                #define AES256 1
+                                std::cerr << "AES 256 KEY." << std::endl;
+                                break;
+                        }
                        
                         squeue = std::make_shared<queue_t>();
                         basebandQueue = std::make_shared<queue_t>();
@@ -2368,6 +2403,11 @@ int main(int argc, char* argv[])
     config->dev_IDs[1] = VoiceSrc.GetCurrentDeviceId();
     config->dev_IDs[2] = VoiceSink.GetCurrentDeviceId();
     config->dev_IDs[3] = BasebandSink.GetCurrentDeviceId();
+
+    if(config->CKEY.size() %2 != 0){
+        config->CKEY = std::string("");
+        config->encrypt = false;
+    }
 
     saveConfig(fname,config);
 
