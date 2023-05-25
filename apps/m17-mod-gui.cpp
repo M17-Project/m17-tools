@@ -1703,8 +1703,8 @@ int main(int argc, char* argv[])
     bool tx = false;
     bool rig_enabled = config->rig_enabled;
 
-    static char str1[8] = "";
-    static char str2[8] = "ALL";
+    static char str1[10] = "";
+    static char str2[10] = "ALL";
     static char buf[128] = "";
 
     std::copy(config->source_address.begin(),config->source_address.end(),&str1[0]);
@@ -1803,8 +1803,8 @@ int main(int argc, char* argv[])
 
         {
             ImGui::Begin("M17 Modulator");
-            ImGui::InputTextWithHint("SRC", "SRC CALLSIGN", str1, 8, ImGuiInputTextFlags_CharsUppercase);
-            ImGui::InputTextWithHint("DST", "DST CALLSIGN", str2, 8, ImGuiInputTextFlags_CharsUppercase);
+            ImGui::InputTextWithHint("SRC", "SRC CALLSIGN", str1, 10, ImGuiInputTextFlags_CharsUppercase);
+            ImGui::InputTextWithHint("DST", "DST CALLSIGN", str2, 10, ImGuiInputTextFlags_CharsUppercase);
             ImGui::InputInt("CAN", &config->can);
 	            config->can = std::min<int>(15,std::max<int>(0,config->can));
             ImGui::Checkbox("Invert Polarity", &config->invert);
@@ -1930,13 +1930,13 @@ int main(int argc, char* argv[])
             ImGui::SliderFloat("##mic_gain", tx_mic_gain, 0.0f, 1.0f, "%.2f");
 
             ImGui::Text("Rx Gain:");
-            ImGui::SliderFloat("##rx_gain", rx_gain, 0.0f, 1.5f, "%.3f");
+            ImGui::SliderFloat("##rx_gain", rx_gain, 0.0f, 1.5f, "%.2f");
 
             ImGui::Text("Speaker Gain:");
             ImGui::SliderFloat("##spk_gain", spk_gain, 0.0f, 1.0f, "%.2f");
 
             ImGui::Text("Tx Gain:");
-            ImGui::SliderFloat("##tx_gain", tx_out_gain, 0.0f, 1.0f, "%.3f");
+            ImGui::SliderFloat("##tx_gain", tx_out_gain, 0.0f, 1.0f, "%.2f");
             ImGui::End();
         }
 
