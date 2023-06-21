@@ -1723,11 +1723,6 @@ int main(int argc, char* argv[])
 
     std::string ptt[2] = {"OFF","ON"};
 
-    std::cout << config->dev_IDs[0] << "\n";
-    std::cout << config->dev_IDs[1] << "\n";
-    std::cout << config->dev_IDs[2] << "\n";
-    std::cout << config->dev_IDs[3] << "\n";
-
     AudioSource BasebandSrc(48000u, 1920u, config->dev_IDs[0]);
     AudioSource VoiceSrc(8000u, 320u, config->dev_IDs[1]);
 
@@ -2418,11 +2413,6 @@ int main(int argc, char* argv[])
     config->dev_IDs[1] = VoiceSrc.GetCurrentDeviceId();
     config->dev_IDs[2] = VoiceSink.GetCurrentDeviceId();
     config->dev_IDs[3] = BasebandSink.GetCurrentDeviceId();
-
-    std::cout << config->dev_IDs[0] << "\n";
-    std::cout << config->dev_IDs[1] << "\n";
-    std::cout << config->dev_IDs[2] << "\n";
-    std::cout << config->dev_IDs[3] << "\n";
 
     if(config->CKEY.size() %2 != 0){
         config->CKEY = std::string("");
