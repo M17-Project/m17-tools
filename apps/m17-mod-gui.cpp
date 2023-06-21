@@ -1475,7 +1475,11 @@ void saveConfig(const std::string& filename, std::optional<Config>& config) {
         file << config->bert << std::endl;
         file << config->can << std::endl;
         file << config->encrypt << std::endl;
-        file << config->CKEY << std::endl;
+        if(config->encrypt){ // if encrypt on
+            file << config->CKEY << std::endl;
+        }else{ // else write "0" -> will be ignored.. "" was causing bugs...
+            file << "0" << std::endl;
+        }
         file << config->dev_IDs[0] << std::endl;
         file << config->dev_IDs[1] << std::endl;
         file << config->dev_IDs[2] << std::endl;
@@ -1522,20 +1526,26 @@ bool readConfig(const std::string& filename, std::optional<Config>& config) {
         file >> config->bert;
         file >> config->can;
         file >> config->encrypt;
-        std::getline(file >> std::ws, config->CKEY); // Read the remaining part of the line (including spaces)
-        file >>  config->dev_IDs[0];
-        file >>  config->dev_IDs[1];
-        file >>  config->dev_IDs[2];
-        file >>  config->dev_IDs[3];
-        file >>  config->dev_Gains[0];
-        file >>  config->dev_Gains[1];
-        file >>  config->dev_Gains[2];
-        file >>  config->dev_Gains[3];
-        file >>  config->rig_enabled;
-        file >>  config->ser_id;
-        file >>  config->baud_id;
-        file >>  config->ptt_id;
-        file >>  config->debug_print;
+        if(config->encrypt){ // if encrypt is on
+            file >> config->CKEY;
+        }
+        else{  // else ignore key
+            std::string null_str;
+            file >> null_str;
+        }
+        file >> config->dev_IDs[0];
+        file >> config->dev_IDs[1];
+        file >> config->dev_IDs[2];
+        file >> config->dev_IDs[3];
+        file >> config->dev_Gains[0];
+        file >> config->dev_Gains[1];
+        file >> config->dev_Gains[2];
+        file >> config->dev_Gains[3];
+        file >> config->rig_enabled;
+        file >> config->ser_id;
+        file >> config->baud_id;
+        file >> config->ptt_id;
+        file >> config->debug_print;
 
         file.close();
         return true;
@@ -1713,6 +1723,11 @@ int main(int argc, char* argv[])
 
     std::string ptt[2] = {"OFF","ON"};
 
+    std::cout << config->dev_IDs[0] << "\n";
+    std::cout << config->dev_IDs[1] << "\n";
+    std::cout << config->dev_IDs[2] << "\n";
+    std::cout << config->dev_IDs[3] << "\n";
+
     AudioSource BasebandSrc(48000u, 1920u, config->dev_IDs[0]);
     AudioSource VoiceSrc(8000u, 320u, config->dev_IDs[1]);
 
@@ -1777,8 +1792,8 @@ int main(int argc, char* argv[])
     float g3 = config->dev_Gains[3];
 
     tx_out_gain = &g3;
-    tx_mic_gain = &g0;
-    rx_gain = &g1;
+    tx_mic_gain = &g1;
+    rx_gain = &g0;
     spk_gain = &g2;
 
 
@@ -2403,6 +2418,11 @@ int main(int argc, char* argv[])
     config->dev_IDs[1] = VoiceSrc.GetCurrentDeviceId();
     config->dev_IDs[2] = VoiceSink.GetCurrentDeviceId();
     config->dev_IDs[3] = BasebandSink.GetCurrentDeviceId();
+
+    std::cout << config->dev_IDs[0] << "\n";
+    std::cout << config->dev_IDs[1] << "\n";
+    std::cout << config->dev_IDs[2] << "\n";
+    std::cout << config->dev_IDs[3] << "\n";
 
     if(config->CKEY.size() %2 != 0){
         config->CKEY = std::string("");
