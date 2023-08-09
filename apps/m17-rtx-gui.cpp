@@ -141,7 +141,7 @@ bool invert_input = false;
 bool quiet = false;
 bool debug = false;
 bool debug_print = false;
-bool noise_blanker = false;
+bool noise_blanker = true;
 
 //bool enc_key = false;
 uint8_t Key[32];	
@@ -667,7 +667,7 @@ struct Config
     bool quiet = false;
     bool invert = false;
     bool lsf = true;
-    bool noise_blanker = false;
+    bool noise_blanker = true;
     bool bin = false;
     bool sym = false;
     bool rrc = true; // default is rrc
