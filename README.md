@@ -89,14 +89,18 @@ will output diagnostic information on a single line in the window.
 
 ### m17-mod
 
-    sox brain.wav -t raw - |  ./m17-mod -S AB1CD -D AB2CD | ./m17-demod -l -d | play -q -b 16 -r 8000 -c1 -t s16 -
+    sox 8k.wav -t raw - |  ./m17-mod -S AB1CD -D AB2CD | ./m17-demod -l -d | play -q -b 16 -r 8000 -c1 -t s16 -
 
 The input audio stream must be single channel, 16-bit little-endian, 8ksps.
 The output of the modulator is 48ksps, 16-bit little-endian, single channel raw audio.
 
+If you have a 16 bit stereo 48000 Hz wav file, it can be converted to the input audio format with a command like the following:
+
+    sox /tmp/recorded.wav -r 8000 -b 16 -c 1 /tmp/8k.wav
+
 To output a bitstream file:
 
-    sox brain.wav -t raw - | ./m17-mod -S AB1CD -b > m17.bin
+    sox 8k.wav -t raw - | ./m17-mod -S AB1CD -x > m17.bin
 
 This bitstream file can be fed into [m17-gnuradio](https://github.com/mobilinkd/m17-gnuradio) to
 transmit M17 using a PlutoSDR, HackRF, or any SDR with an appropriate GNURadio sink. See the
