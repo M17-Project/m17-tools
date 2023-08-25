@@ -23,7 +23,7 @@ struct LinkSetupFrame
 
     enum TxType { PACKET, STREAM };
     enum DataType { DT_RESERVED, DATA, VOICE, MIXED };
-    enum EncType { NONE, AES, LFSR, ET_RESERVED };
+    enum EncType { NONE, LFSR, AES, ET_RESERVED };
 
     call_t tocall_ = {0};   // Destination
     call_t mycall_ = {0};   // Source
