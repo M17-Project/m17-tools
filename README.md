@@ -62,7 +62,7 @@ It also requires a modern C++17 compiler (GCC 8 minimum).
     make test
     sudo make install
 
-## Build for macOS using MacPorts
+### Build for macOS using MacPorts
     sudo port install pkgconfig boost gtest portaudio
 
 Then follow the build steps above from "cd m17-tools".
