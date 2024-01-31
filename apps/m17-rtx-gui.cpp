@@ -12,7 +12,6 @@
 #include <boost/program_options.hpp>
 #include <boost/optional.hpp>
 #include <boost/algorithm/hex.hpp>
-#include <boost/filesystem.hpp>
 
 #include <array>
 #include <cstddef>
