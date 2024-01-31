@@ -12,6 +12,7 @@
 #include <boost/program_options.hpp>
 #include <boost/optional.hpp>
 #include <boost/algorithm/hex.hpp>
+#include <boost/filesystem.hpp>
 
 #include <array>
 #include <cstddef>
@@ -71,7 +72,7 @@
         return port_names;
     }
 #endif
-#if defined (__linux__) || defined(__APPLE__)
+#if defined (__linux__)
     #include <filesystem>
     #include <fstream>
     std::vector<std::string> get_available_ports(serialib &serial) {
@@ -126,6 +127,35 @@
     }
 #endif
 
+#if defined(__APPLE__)
+    #include <filesystem>
+    std::vector<std::string> ports;
+    std::string dev_path = "/dev";
+    std::string cu_devices = "/dev/cu.";
+    std::string pathstring;
+    std::size_t found;
+    using std::filesystem::directory_iterator;
+
+    std::vector<std::string> get_available_ports(serialib &serial) {
+//        namespace fs = boost::filesystem;
+
+        std::cerr << "Detected serial ports\n";
+        for (auto const & entry: directory_iterator(dev_path))
+        { 
+            pathstring = entry.path().string();
+            found = pathstring.find(cu_devices);
+            if (found != std::string::npos)
+            {
+                ports.emplace_back(pathstring);
+                std::cerr << pathstring;
+                std::cerr << "\n";
+            }
+        }
+        return ports;
+    }
+
+
+#endif
 
 std::atomic<bool> running{false};
 
