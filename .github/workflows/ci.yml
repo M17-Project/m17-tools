@@ -128,8 +128,8 @@ jobs:
           xcopy Library\bin\api-ms-win-crt-stdio-l1-1-0.dll D:\bin\
           xcopy Library\bin\api-ms-win-crt-locale-l1-1-0.dll D:\bin\
           xcopy Library\bin\api-ms-win-crt-math-l1-1-0.dll D:\bin\
-          xcopy Library\mingw-w64\bin\libwinpthread-1.dll D:\bin\
-          xcopy Library\mingw-w64\bin\libgcc_s_seh-1.dll D:\bin\
+          xcopy Library\bin\libwinpthread-1.dll D:\bin\
+          xcopy Library\bin\libgcc_s_seh-1.dll D:\bin\
       - name: Upload Artifacts
         uses: actions/upload-artifact@v3
         with:
