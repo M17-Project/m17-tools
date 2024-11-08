@@ -129,7 +129,14 @@ struct Config
             ;
 
         po::variables_map vm;
-        po::store(po::parse_command_line(argc, argv, desc), vm);
+        try {
+            po::store(po::parse_command_line(argc, argv, desc), vm);
+        } catch (po::error& ex)
+        {
+            std::cerr << ex.what() << std::endl;
+            std::cout << desc << std::endl;
+            return std::nullopt;
+        }
 
         if (vm.count("help"))
         {
